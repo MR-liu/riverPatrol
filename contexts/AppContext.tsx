@@ -1,5 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import ApiService from '@/utils/ApiService';
+import EnhancedProblemCategoryService from '@/utils/EnhancedProblemCategoryService';
+import EnhancedNotificationService, { EnhancedMessage } from '@/utils/EnhancedNotificationService';
+
+// Supabase配置 - 实际使用时请替换为你的Supabase URL
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'http://localhost:54321';
 
 export interface WorkOrder {
   id: string;
@@ -116,6 +122,26 @@ interface AppContextType {
   saveOfflineReport: (reportData: any) => Promise<boolean>;
   syncOfflineData: () => Promise<void>;
   clearOfflineData: () => Promise<boolean>;
+
+  // 新增API方法
+  loginWithBackend: (username: string, password: string) => Promise<boolean>;
+  loadWorkOrdersFromBackend: (filters?: any) => Promise<void>;
+  refreshDashboardStats: () => Promise<void>;
+  uploadFile: (file: any, type: string, relatedId?: string) => Promise<string | null>;
+  submitReport: (reportData: any) => Promise<boolean>;
+  updateWorkOrderStatus: (workOrderId: string, action: string, note?: string) => Promise<boolean>;
+  
+  // 仪表板统计数据
+  dashboardStats: any;
+  setDashboardStats: (stats: any) => void;
+  
+  // 通知和消息
+  messages: EnhancedMessage[];
+  unreadCount: number;
+  getMessages: () => Promise<EnhancedMessage[]>;
+  getUnreadMessages: () => Promise<EnhancedMessage[]>;
+  markMessageAsRead: (messageIds: string[]) => Promise<boolean>;
+  syncMessages: () => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -134,6 +160,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [dashboardStats, setDashboardStats] = useState<any>(null);
+  
+  // 通知和消息状态
+  const [messages, setMessages] = useState<EnhancedMessage[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // 默认设置
   const defaultSettings = useMemo(() => ({
@@ -315,11 +346,247 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // 新增API方法
+  const loginWithBackend = useCallback(async (username: string, password: string): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const result = await ApiService.login(username, password);
+      
+      if (result.success && result.data) {
+        setIsLoggedIn(true);
+        // 登录成功后初始化其他服务
+        await refreshDashboardStats();
+        return true;
+      } else {
+        setError(new Error(result.message || '登录失败'));
+        return false;
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setError(error as Error);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const loadWorkOrdersFromBackend = useCallback(async (filters: any = {}): Promise<void> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const result = await ApiService.getWorkOrders({
+        page: 1,
+        size: 50,
+        status: workOrderFilter !== 'all' ? workOrderFilter : undefined,
+        ...filters
+      });
+      
+      if (result.success && result.data) {
+        setWorkOrders(result.data.items);
+      } else {
+        throw new Error(result.message || '获取工单列表失败');
+      }
+    } catch (error) {
+      console.error('Load work orders error:', error);
+      setError(error as Error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [workOrderFilter]);
+
+  const refreshDashboardStats = useCallback(async (): Promise<void> => {
+    try {
+      const result = await ApiService.getDashboardStats();
+      
+      if (result.success && result.data) {
+        setDashboardStats(result.data);
+      } else {
+        console.warn('获取仪表板统计失败:', result.message);
+      }
+    } catch (error) {
+      console.error('Refresh dashboard stats error:', error);
+    }
+  }, []);
+
+  const uploadFile = useCallback(async (file: any, type: string, relatedId?: string): Promise<string | null> => {
+    try {
+      setIsLoading(true);
+      
+      const result = await ApiService.uploadFile(file, type as any, relatedId);
+      
+      if (result.success && result.data) {
+        return result.data.file_url;
+      } else {
+        throw new Error(result.message || '文件上传失败');
+      }
+    } catch (error) {
+      console.error('Upload file error:', error);
+      setError(error as Error);
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const submitReport = useCallback(async (reportData: any): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      // 这里需要调用submit-report接口，暂时使用现有的saveOfflineReport
+      const success = await saveOfflineReport(reportData);
+      
+      if (success) {
+        // 如果在线，尝试同步到后端
+        if (!isOfflineMode) {
+          try {
+            // TODO: 调用后端submit-report接口
+            console.log('提交报告到后端:', reportData);
+          } catch (error) {
+            console.warn('同步报告到后端失败:', error);
+          }
+        }
+      }
+      
+      return success;
+    } catch (error) {
+      console.error('Submit report error:', error);
+      setError(error as Error);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [saveOfflineReport, isOfflineMode]);
+
+  const updateWorkOrderStatus = useCallback(async (workOrderId: string, action: string, note?: string): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const result = await ApiService.updateWorkOrderStatus(workOrderId, action as any, note);
+      
+      if (result.success) {
+        // 更新本地工单状态
+        setWorkOrders(prevOrders => 
+          prevOrders.map(order => 
+            order.id === workOrderId 
+              ? { ...order, status: result.data?.new_status || order.status }
+              : order
+          )
+        );
+        return true;
+      } else {
+        throw new Error(result.message || '更新工单状态失败');
+      }
+    } catch (error) {
+      console.error('Update work order status error:', error);
+      setError(error as Error);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // 通知和消息相关方法
+  const getMessages = useCallback(async (): Promise<EnhancedMessage[]> => {
+    try {
+      const messages = await EnhancedNotificationService.getMessages();
+      setMessages(messages);
+      return messages;
+    } catch (error) {
+      console.error('Get messages error:', error);
+      return [];
+    }
+  }, []);
+
+  const getUnreadMessages = useCallback(async (): Promise<EnhancedMessage[]> => {
+    try {
+      const unreadMessages = await EnhancedNotificationService.getUnreadMessages();
+      const count = await EnhancedNotificationService.getUnreadCount();
+      setUnreadCount(count);
+      return unreadMessages;
+    } catch (error) {
+      console.error('Get unread messages error:', error);
+      return [];
+    }
+  }, []);
+
+  const markMessageAsRead = useCallback(async (messageIds: string[]): Promise<boolean> => {
+    try {
+      const result = await EnhancedNotificationService.markAsRead(messageIds);
+      if (result) {
+        // 更新本地状态
+        const updatedMessages = await EnhancedNotificationService.getMessages();
+        const newUnreadCount = await EnhancedNotificationService.getUnreadCount();
+        setMessages(updatedMessages);
+        setUnreadCount(newUnreadCount);
+      }
+      return result;
+    } catch (error) {
+      console.error('Mark message as read error:', error);
+      return false;
+    }
+  }, []);
+
+  const syncMessages = useCallback(async (): Promise<boolean> => {
+    try {
+      const result = await EnhancedNotificationService.syncMessagesFromServer();
+      if (result) {
+        // 更新本地状态
+        const updatedMessages = await EnhancedNotificationService.getMessages();
+        const newUnreadCount = await EnhancedNotificationService.getUnreadCount();
+        setMessages(updatedMessages);
+        setUnreadCount(newUnreadCount);
+      }
+      return result;
+    } catch (error) {
+      console.error('Sync messages error:', error);
+      return false;
+    }
+  }, []);
+
+  // 在登录成功后加载消息
+  useEffect(() => {
+    if (isLoggedIn) {
+      getMessages();
+      getUnreadMessages();
+      
+      // 设置定期同步
+      const syncInterval = setInterval(syncMessages, 30000); // 每30秒同步一次
+      
+      return () => clearInterval(syncInterval);
+    }
+  }, [isLoggedIn, getMessages, getUnreadMessages, syncMessages]);
+
   // 初始化数据
   useEffect(() => {
     const initializeData = async () => {
       try {
         setIsLoading(true);
+        
+        // 初始化API服务
+        ApiService.initialize(SUPABASE_URL);
+        
+        // 初始化问题分类服务
+        await EnhancedProblemCategoryService.initialize(SUPABASE_URL);
+        
+        // 初始化通知服务
+        const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+        await EnhancedNotificationService.initialize(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // 尝试恢复登录状态
+        const restored = await ApiService.restoreTokensFromStorage();
+        if (restored) {
+          setIsLoggedIn(true);
+          // 如果已登录，加载数据
+          await Promise.all([
+            loadWorkOrdersFromBackend(),
+            refreshDashboardStats()
+          ]);
+        }
         
         // 加载用户设置
         const savedSettings = await AsyncStorage.getItem('user_settings');
@@ -394,12 +661,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveOfflineReport,
     syncOfflineData,
     clearOfflineData,
+
+    // 新增API方法
+    loginWithBackend,
+    loadWorkOrdersFromBackend,
+    refreshDashboardStats,
+    uploadFile,
+    submitReport,
+    updateWorkOrderStatus,
+    
+    // 仪表板统计数据
+    dashboardStats,
+    setDashboardStats,
+    
+    // 通知和消息
+    messages,
+    unreadCount,
+    getMessages,
+    getUnreadMessages,
+    markMessageAsRead,
+    syncMessages,
   }), [
     isLoading, error, loginForm, showPassword, isLoggedIn,
     workOrders, selectedWorkOrder, workOrderFilter,
     reportStep, selectedCategory, reportForm, processResult,
     userSettings, offlineStats, isOfflineMode,
-    saveOfflineReport, syncOfflineData, clearOfflineData
+    saveOfflineReport, syncOfflineData, clearOfflineData,
+    loginWithBackend, loadWorkOrdersFromBackend, refreshDashboardStats,
+    uploadFile, submitReport, updateWorkOrderStatus,
+    dashboardStats, messages, unreadCount, getMessages, getUnreadMessages, markMessageAsRead, syncMessages
   ]);
 
   return (

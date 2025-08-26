@@ -18,8 +18,43 @@ import { AppStatusBar, StatusBarConfigs } from '@/components/AppStatusBar';
 import { useAppContext } from '@/contexts/AppContext';
 
 export default function DashboardScreen() {
-  const { workOrders, setSelectedWorkOrder } = useAppContext();
+  const { 
+    workOrders, 
+    setSelectedWorkOrder, 
+    dashboardStats,
+    refreshDashboardStats,
+    isLoading 
+  } = useAppContext();
   const insets = useSafeAreaInsets();
+
+  // 优先使用后端统计数据，如果没有则使用本地计算
+  const stats = useMemo(() => {
+    if (dashboardStats?.overview) {
+      return {
+        pending: dashboardStats.overview.pending_count,
+        processing: dashboardStats.overview.processing_count,
+        completed: dashboardStats.overview.completed_count,
+        completionRate: dashboardStats.overview.completion_rate,
+        todayNew: dashboardStats.today_stats?.new_workorders || 0,
+        todayCompleted: dashboardStats.today_stats?.completed_workorders || 0
+      };
+    }
+    
+    // fallback到本地计算
+    const pendingCount = workOrders.filter(order => order.status === '待接收').length;
+    const processingCount = workOrders.filter(order => order.status === '处理中').length;
+    const completedCount = workOrders.filter(order => order.status === '已完成').length;
+    const total = workOrders.length;
+    
+    return {
+      pending: pendingCount,
+      processing: processingCount,
+      completed: completedCount,
+      completionRate: total > 0 ? (completedCount / total) * 100 : 0,
+      todayNew: 0,
+      todayCompleted: 0
+    };
+  }, [dashboardStats, workOrders]);
 
   // 使用 useMemo 优化计算结果
   const pendingOrders = useMemo(() => workOrders.filter(order => order.status === '待接收'), [workOrders]);
@@ -129,7 +164,7 @@ export default function DashboardScreen() {
                 start={{x: 0, y: 0}}
                 end={{x: 1, y: 1}}
               >
-                <Text style={styles.statNumber}>3</Text>
+                <Text style={styles.statNumber}>{stats.pending}</Text>
                 <Text style={styles.statLabel}>待办</Text>
               </LinearGradient>
               
@@ -139,7 +174,7 @@ export default function DashboardScreen() {
                 start={{x: 0, y: 0}}
                 end={{x: 1, y: 1}}
               >
-                <Text style={styles.statNumber}>12</Text>
+                <Text style={styles.statNumber}>{stats.todayCompleted}</Text>
                 <Text style={styles.statLabel}>今日完成</Text>
               </LinearGradient>
               
@@ -149,7 +184,7 @@ export default function DashboardScreen() {
                 start={{x: 0, y: 0}}
                 end={{x: 1, y: 1}}
               >
-                <Text style={styles.statNumber}>156</Text>
+                <Text style={styles.statNumber}>{stats.processing + stats.completed}</Text>
                 <Text style={styles.statLabel}>本月总计</Text>
               </LinearGradient>
               
@@ -159,7 +194,7 @@ export default function DashboardScreen() {
                 start={{x: 0, y: 0}}
                 end={{x: 1, y: 1}}
               >
-                <Text style={styles.statNumber}>95%</Text>
+                <Text style={styles.statNumber}>{stats.completionRate.toFixed(0)}%</Text>
                 <Text style={styles.statLabel}>准时率</Text>
               </LinearGradient>
             </View>

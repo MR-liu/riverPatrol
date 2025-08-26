@@ -17,7 +17,7 @@ import { AppStatusBar, StatusBarConfigs } from '@/components/AppStatusBar';
 import { useAppContext } from '@/contexts/AppContext';
 import PhotoPicker from '@/components/PhotoPicker';
 import CategorySelector from '@/components/CategorySelector';
-import problemCategoryService from '@/utils/ProblemCategoryService';
+import EnhancedProblemCategoryService from '@/utils/EnhancedProblemCategoryService';
 
 export default function ReportScreen() {
   const {
@@ -29,6 +29,9 @@ export default function ReportScreen() {
     setReportForm,
     saveOfflineReport,
     isOfflineMode,
+    submitReport,
+    uploadFile,
+    isLoading,
   } = useAppContext();
 
   const insets = useSafeAreaInsets();
@@ -44,9 +47,8 @@ export default function ReportScreen() {
     setSelectedCategoryName(categoryName);
     setSelectedCategory(categoryId);
     
-    // 如果选择了三级分类，直接进入下一步
-    const category = problemCategoryService.getCategoryById(categoryId);
-    if (category && category.level === 3) {
+    // 前端分类选择完成后直接进入下一步
+    if (categoryId) {
       setReportStep(2);
     }
   };
@@ -54,12 +56,6 @@ export default function ReportScreen() {
   const handleNext = () => {
     if (!selectedCategoryId) {
       Alert.alert('提示', '请选择问题分类');
-      return;
-    }
-    
-    const category = problemCategoryService.getCategoryById(selectedCategoryId);
-    if (!category || category.level !== 3) {
-      Alert.alert('提示', '请选择具体的问题类型');
       return;
     }
     
@@ -79,43 +75,34 @@ export default function ReportScreen() {
     }
 
     try {
+      // 准备报告数据
       const reportData = {
-        categoryId: selectedCategoryId,
-        categoryName: selectedCategoryName,
-        categoryFullPath: problemCategoryService.getCategoryFullName(selectedCategoryId),
+        category: selectedCategoryId,
+        selectedItems: [selectedCategoryName],
+        title: `${selectedCategoryName} - ${location || '未知位置'}`,
         description: description.trim(),
-        location: location.trim() || '当前位置',
-        priority,
-        photos,
-        timestamp: Date.now(),
-        reportId: `REPORT_${Date.now()}`,
+        location: {
+          address: location.trim() || '当前位置',
+          coordinates: {
+            latitude: 0, // TODO: 获取实际GPS坐标
+            longitude: 0
+          }
+        },
+        priority: priority.toLowerCase(), // 转换为小写以匹配后端
+        photos: photos,
+        reporterInfo: {
+          name: '当前用户', // TODO: 从用户上下文获取
+          phone: ''
+        }
       };
 
-      if (isOfflineMode) {
-        // 离线模式：保存到本地存储
-        const success = await saveOfflineReport(reportData);
-        if (success) {
-          Alert.alert(
-            '离线上报成功',
-            '问题已保存到本地，网络恢复后将自动同步',
-            [
-              {
-                text: '确定',
-                onPress: () => {
-                  resetForm();
-                  router.push('/(tabs)');
-                },
-              },
-            ]
-          );
-        } else {
-          Alert.alert('上报失败', '请稍后重试');
-        }
-      } else {
-        // 在线模式：直接提交（这里可以调用API）
+      // 使用新的submitReport方法
+      const success = await submitReport(reportData);
+      
+      if (success) {
         Alert.alert(
           '上报成功',
-          '问题已成功上报，我们会尽快处理',
+          isOfflineMode ? '问题已保存到本地，网络恢复后将自动同步' : '问题上报成功，我们会尽快处理',
           [
             {
               text: '确定',
@@ -126,10 +113,12 @@ export default function ReportScreen() {
             },
           ]
         );
+      } else {
+        Alert.alert('上报失败', '请稍后重试');
       }
     } catch (error) {
-      console.error('Report submission error:', error);
-      Alert.alert('上报失败', '请检查网络连接后重试');
+      console.error('Submit report error:', error);
+      Alert.alert('上报失败', '网络异常，请检查网络连接后重试');
     }
   };
 
@@ -180,7 +169,7 @@ export default function ReportScreen() {
         <View style={styles.selectedInfo}>
           <MaterialIcons name="check-circle" size={18} color="#10B981" />
           <Text style={styles.selectedText}>
-            {problemCategoryService.getCategoryFullName(selectedCategoryId)}
+            {EnhancedProblemCategoryService.getCategoryFullName(selectedCategoryId) || selectedCategoryName}
           </Text>
         </View>
       )}
@@ -289,9 +278,11 @@ export default function ReportScreen() {
             现场照片 <Text style={styles.required}>*</Text>
           </Text>
           <PhotoPicker
+            title="现场照片"
             photos={photos}
             onPhotosChange={setPhotos}
             maxPhotos={6}
+            required={true}
           />
         </View>
       </View>
@@ -646,24 +637,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  stepCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepCircleActive: {
-    backgroundColor: '#6366F1',
-    borderColor: '#6366F1',
-  },
   stepCircleCompleted: {
     backgroundColor: '#10B981',
     borderColor: '#10B981',
@@ -848,15 +821,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderRadius: 8,
     alignItems: 'center',
-  },
-  nextButton: {
-    backgroundColor: '#3B82F6',
-  },
-  nextButtonText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
   },
   disabledButton: {
     backgroundColor: '#E5E7EB',

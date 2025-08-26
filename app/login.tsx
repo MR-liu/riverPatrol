@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +24,10 @@ export default function LoginScreen() {
     showPassword,
     setShowPassword,
     setIsLoggedIn,
+    loginWithBackend,
+    isLoading,
+    error,
+    setError,
   } = useAppContext();
   
   const insets = useSafeAreaInsets();
@@ -30,21 +35,39 @@ export default function LoginScreen() {
   const [password, setPassword] = useState(loginForm.password);
 
   const handleLogin = async () => {
-    if (username && password) {
-      if (username === 'P001' && password === '123456') {
+    if (!username || !password) {
+      Alert.alert('提示', '请输入用户名和密码');
+      return;
+    }
+
+    // 清除之前的错误
+    setError(null);
+    
+    try {
+      // 使用后端登录接口
+      const success = await loginWithBackend(username, password);
+      
+      if (success) {
         const loginInfo = { username, password };
         setLoginForm(loginInfo);
-
+        
         // 保存登录信息到本地存储
         await AsyncStorage.setItem('loginInfo', JSON.stringify(loginInfo));
-
-        setIsLoggedIn(true);
-        router.replace('/(tabs)');
+        
+        Alert.alert('登录成功', '欢迎使用智慧河道巡查系统', [
+          {
+            text: '确定',
+            onPress: () => router.replace('/(tabs)')
+          }
+        ]);
       } else {
-        Alert.alert('登录失败', '用户名或密码错误');
+        // 错误信息已经在loginWithBackend中设置
+        const errorMessage = error?.message || '登录失败，请检查用户名和密码';
+        Alert.alert('登录失败', errorMessage);
       }
-    } else {
-      Alert.alert('提示', '请输入用户名和密码');
+    } catch (err) {
+      console.error('Login error:', err);
+      Alert.alert('登录失败', '网络连接异常，请稍后重试');
     }
   };
 
@@ -100,12 +123,26 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-              <Text style={styles.loginButtonText}>登录</Text>
+            <TouchableOpacity 
+              style={[styles.loginButton, isLoading && styles.loginButtonDisabled]} 
+              onPress={handleLogin}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <View style={styles.loginButtonContent}>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <Text style={[styles.loginButtonText, { marginLeft: 8 }]}>登录中...</Text>
+                </View>
+              ) : (
+                <Text style={styles.loginButtonText}>登录</Text>
+              )}
             </TouchableOpacity>
 
             <View style={styles.helpContainer}>
-              <Text style={styles.helpText}>测试账号：P001，密码：123456</Text>
+              <Text style={styles.helpText}>请使用后端配置的用户名和密码登录</Text>
+              {error && (
+                <Text style={styles.errorText}>{error.message}</Text>
+              )}
             </View>
           </View>
         </View>
@@ -186,10 +223,19 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  loginButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+    shadowOpacity: 0.1,
+  },
+  loginButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   loginButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   helpContainer: {
     marginTop: 24,
@@ -198,5 +244,11 @@ const styles = StyleSheet.create({
   helpText: {
     color: '#6B7280',
     fontSize: 14,
+  },
+  errorText: {
+    color: '#EF4444',
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
   },
 });

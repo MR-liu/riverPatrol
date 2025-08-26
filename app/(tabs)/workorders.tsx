@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   FlatList,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -14,15 +15,25 @@ import { router } from 'expo-router';
 import { SafeAreaWrapper } from '@/components/SafeAreaWrapper';
 
 import { useAppContext } from '@/contexts/AppContext';
-import problemCategoryService from '@/utils/ProblemCategoryService';
+import EnhancedProblemCategoryService from '@/utils/EnhancedProblemCategoryService';
 
 export default function WorkOrdersScreen() {
-  const { workOrders, workOrderFilter, setWorkOrderFilter, setSelectedWorkOrder } = useAppContext();
+  const { 
+    workOrders, 
+    workOrderFilter, 
+    setWorkOrderFilter, 
+    setSelectedWorkOrder,
+    loadWorkOrdersFromBackend,
+    isLoading,
+    error,
+  } = useAppContext();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
-      Alert.alert('搜索功能', `正在搜索：${searchQuery}`);
+      // 使用后端搜索功能
+      loadWorkOrdersFromBackend({ search: searchQuery });
     }
   };
 
@@ -30,9 +41,23 @@ export default function WorkOrdersScreen() {
     Alert.alert('筛选功能', '高级筛选功能开发中，敬请期待');
   };
 
-  const handleRefresh = () => {
-    Alert.alert('刷新成功', '工单列表已刷新');
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await loadWorkOrdersFromBackend();
+      Alert.alert('刷新成功', '工单列表已刷新');
+    } catch (error) {
+      console.error('Refresh error:', error);
+      Alert.alert('刷新失败', '请检查网络连接');
+    } finally {
+      setIsRefreshing(false);
+    }
   };
+
+  // 监听筛选条件变化，自动刷新数据
+  useEffect(() => {
+    loadWorkOrdersFromBackend();
+  }, [workOrderFilter, loadWorkOrdersFromBackend]);
 
   const handleWorkOrderPress = (workOrder: any) => {
     setSelectedWorkOrder(workOrder);
@@ -49,7 +74,7 @@ export default function WorkOrdersScreen() {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(order => {
-        const categoryName = problemCategoryService.getCategoryFullName(order.type) || order.type;
+        const categoryName = EnhancedProblemCategoryService.getCategoryFullName(order.type) || order.type;
         return order.title.toLowerCase().includes(query) ||
                order.location.toLowerCase().includes(query) ||
                categoryName.toLowerCase().includes(query);
@@ -135,7 +160,7 @@ export default function WorkOrdersScreen() {
         <View style={styles.workOrderType}>
           <MaterialIcons name="category" size={14} color="#6B7280" />
           <Text style={styles.workOrderTypeText}>
-            {problemCategoryService.getCategoryFullName(item.type) || item.type}
+            {EnhancedProblemCategoryService.getCategoryFullName(item.type) || item.type}
           </Text>
         </View>
         <View
@@ -174,8 +199,12 @@ export default function WorkOrdersScreen() {
             <TouchableOpacity style={styles.actionButton} onPress={handleFilter}>
               <MaterialIcons name="filter-list" size={20} color="#64748B" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton} onPress={handleRefresh}>
-              <MaterialIcons name="refresh" size={20} color="#64748B" />
+            <TouchableOpacity style={styles.actionButton} onPress={handleRefresh} disabled={isLoading || isRefreshing}>
+              {isRefreshing ? (
+                <ActivityIndicator size="small" color="#64748B" />
+              ) : (
+                <MaterialIcons name="refresh" size={20} color="#64748B" />
+              )}
             </TouchableOpacity>
           </View>
 
@@ -213,8 +242,30 @@ export default function WorkOrdersScreen() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={() => (
             <View style={styles.emptyContainer}>
-              <MaterialIcons name="assignment" size={48} color="#D1D5DB" />
-              <Text style={styles.emptyText}>暂无工单数据</Text>
+              {isLoading ? (
+                <>
+                  <ActivityIndicator size="large" color="#3B82F6" />
+                  <Text style={styles.emptyText}>加载中...</Text>
+                </>
+              ) : error ? (
+                <>
+                  <MaterialIcons name="error" size={48} color="#EF4444" />
+                  <Text style={[styles.emptyText, { color: '#EF4444' }]}>
+                    加载失败: {error.message}
+                  </Text>
+                  <TouchableOpacity 
+                    style={styles.retryButton} 
+                    onPress={() => loadWorkOrdersFromBackend()}
+                  >
+                    <Text style={styles.retryButtonText}>重试</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <MaterialIcons name="assignment" size={48} color="#D1D5DB" />
+                  <Text style={styles.emptyText}>暂无工单数据</Text>
+                </>
+              )}
             </View>
           )}
         />
@@ -419,5 +470,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#9CA3AF',
     marginTop: 12,
+  },
+  retryButton: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
