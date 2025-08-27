@@ -41,34 +41,67 @@ async function main() {
 
 // 确保测试用户有设备记录
 async function ensureTestDevice() {
-  const deviceData = {
+  // 为用户 U002（张三，处理人）注册设备
+  const deviceDataU002 = {
     id: `TEST${Date.now().toString().slice(-8)}`,
     device_id: `test_device_${Date.now().toString().slice(-8)}`,
     user_id: 'U002', // 张三
     device_type: 'ios',
-    push_token: `ExponentPushToken[VALID_TEST_TOKEN_${Date.now()}]`,
-    device_name: 'Test iPhone for Push',
+    push_token: `ExponentPushToken[VALID_TEST_TOKEN_U002_${Date.now()}]`,
+    device_name: 'Test iPhone for U002',
     os_version: 'iOS 17.0',
     app_version: '1.0.0',
     is_active: true,
     notification_permission: true,
   };
 
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/mobile_devices`, {
+  const responseU002 = await fetch(`${SUPABASE_URL}/rest/v1/mobile_devices`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${SERVICE_ROLE_KEY}`,
       'Content-Type': 'application/json',
       'Prefer': 'return=representation'
     },
-    body: JSON.stringify(deviceData)
+    body: JSON.stringify(deviceDataU002)
   });
 
-  if (response.ok) {
-    const result = await response.json();
-    console.log('✓ 测试设备注册成功:', result[0]?.device_id);
+  if (responseU002.ok) {
+    const result = await responseU002.json();
+    console.log('✓ 测试设备注册成功 (U002):', result[0]?.device_id);
   } else {
-    console.log('ℹ 测试设备可能已存在，继续测试...');
+    console.log('ℹ U002测试设备可能已存在，继续测试...');
+  }
+
+  // 为用户 U001（管理员，创建者）注册设备
+  await sleep(100); // 避免ID冲突
+  const deviceDataU001 = {
+    id: `TEST${Date.now().toString().slice(-8)}`,
+    device_id: `test_device_${Date.now().toString().slice(-8)}`,
+    user_id: 'U001', // 管理员
+    device_type: 'ios',
+    push_token: `ExponentPushToken[VALID_TEST_TOKEN_U001_${Date.now()}]`,
+    device_name: 'Test iPhone for U001',
+    os_version: 'iOS 17.0',
+    app_version: '1.0.0',
+    is_active: true,
+    notification_permission: true,
+  };
+
+  const responseU001 = await fetch(`${SUPABASE_URL}/rest/v1/mobile_devices`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(deviceDataU001)
+  });
+
+  if (responseU001.ok) {
+    const result = await responseU001.json();
+    console.log('✓ 测试设备注册成功 (U001):', result[0]?.device_id);
+  } else {
+    console.log('ℹ U001测试设备可能已存在，继续测试...');
   }
 }
 

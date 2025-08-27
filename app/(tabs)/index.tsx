@@ -23,7 +23,8 @@ export default function DashboardScreen() {
     setSelectedWorkOrder, 
     dashboardStats,
     refreshDashboardStats,
-    isLoading 
+    isLoading,
+    currentUser 
   } = useAppContext();
   const insets = useSafeAreaInsets();
 
@@ -36,7 +37,9 @@ export default function DashboardScreen() {
         completed: dashboardStats.overview.completed_count,
         completionRate: dashboardStats.overview.completion_rate,
         todayNew: dashboardStats.today_stats?.new_workorders || 0,
-        todayCompleted: dashboardStats.today_stats?.completed_workorders || 0
+        todayCompleted: dashboardStats.today_stats?.completed_workorders || 0,
+        monthlyTotal: dashboardStats.overview.total_workorders, // 真实的总工单数
+        onTimeRate: dashboardStats.performance_metrics?.on_time_rate || 0 // 真实的准时率
       };
     }
     
@@ -52,7 +55,9 @@ export default function DashboardScreen() {
       completed: completedCount,
       completionRate: total > 0 ? (completedCount / total) * 100 : 0,
       todayNew: 0,
-      todayCompleted: 0
+      todayCompleted: 0,
+      monthlyTotal: total, // 本地工单总数
+      onTimeRate: 85 // 默认准时率（如果没有后端数据）
     };
   }, [dashboardStats, workOrders]);
 
@@ -60,6 +65,25 @@ export default function DashboardScreen() {
   const pendingOrders = useMemo(() => workOrders.filter(order => order.status === '待接收'), [workOrders]);
   const processingOrders = useMemo(() => workOrders.filter(order => order.status === '处理中'), [workOrders]);
   const completedOrders = useMemo(() => workOrders.filter(order => order.status === '已完成'), [workOrders]);
+
+  // 获取问候语
+  const getGreeting = useCallback(() => {
+    const hour = new Date().getHours();
+    if (hour < 6) return '凌晨好';
+    if (hour < 9) return '早上好';
+    if (hour < 12) return '上午好';
+    if (hour < 14) return '中午好';
+    if (hour < 18) return '下午好';
+    if (hour < 22) return '晚上好';
+    return '夜深了';
+  }, []);
+
+  // 获取用户显示名称
+  const getUserDisplayName = useCallback(() => {
+    if (currentUser?.name) return currentUser.name;
+    if (currentUser?.username) return currentUser.username;
+    return '用户';
+  }, [currentUser]);
 
   // 使用 useCallback 优化事件处理函数
   const handleNotificationClick = useCallback(() => {
@@ -135,7 +159,7 @@ export default function DashboardScreen() {
           <BlurView intensity={20} style={styles.headerBlur}>
             <View style={styles.headerTop}>
               <View>
-                <Text style={styles.greeting}>早上好，张三</Text>
+                <Text style={styles.greeting}>{getGreeting()}，{getUserDisplayName()}</Text>
                 <Text style={styles.subGreeting}>今天是个适合巡查的好天气</Text>
               </View>
               <View style={styles.headerActions}>
@@ -146,26 +170,19 @@ export default function DashboardScreen() {
                   <MaterialIcons name="notifications" size={20} color="#475569" />
                   <View style={styles.notificationDot} />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionIcon}
-                  onPress={handleNotificationClick}
-                >
-                  <MaterialIcons name="message" size={20} color="#475569" />
-                  <View style={styles.messageDot} />
-                </TouchableOpacity>
               </View>
             </View>
 
             {/* 现代化统计卡片 */}
             <View style={styles.statsContainer}>
               <LinearGradient
-                colors={['#fef2f2', '#fecaca']}
+                colors={['#fff7ed', '#fed7aa']}
                 style={styles.statCard}
                 start={{x: 0, y: 0}}
                 end={{x: 1, y: 1}}
               >
-                <Text style={styles.statNumber}>{stats.pending}</Text>
-                <Text style={styles.statLabel}>待办</Text>
+                <Text style={styles.statNumber}>{stats.todayNew}</Text>
+                <Text style={styles.statLabel}>今日新增</Text>
               </LinearGradient>
               
               <LinearGradient
@@ -184,7 +201,7 @@ export default function DashboardScreen() {
                 start={{x: 0, y: 0}}
                 end={{x: 1, y: 1}}
               >
-                <Text style={styles.statNumber}>{stats.processing + stats.completed}</Text>
+                <Text style={styles.statNumber}>{stats.monthlyTotal || 0}</Text>
                 <Text style={styles.statLabel}>本月总计</Text>
               </LinearGradient>
               
@@ -194,7 +211,7 @@ export default function DashboardScreen() {
                 start={{x: 0, y: 0}}
                 end={{x: 1, y: 1}}
               >
-                <Text style={styles.statNumber}>{stats.completionRate.toFixed(0)}%</Text>
+                <Text style={styles.statNumber}>{stats.onTimeRate?.toFixed(0) || '85'}%</Text>
                 <Text style={styles.statLabel}>准时率</Text>
               </LinearGradient>
             </View>
@@ -299,15 +316,15 @@ export default function DashboardScreen() {
               </View>
               <View style={styles.taskStatsGrid}>
                 <View style={styles.taskStat}>
-                  <Text style={styles.taskStatNumber}>8</Text>
+                  <Text style={styles.taskStatNumber}>{stats.todayCompleted}</Text>
                   <Text style={styles.taskStatLabel}>已完成</Text>
                 </View>
                 <View style={styles.taskStat}>
-                  <Text style={styles.taskStatNumber}>2</Text>
+                  <Text style={styles.taskStatNumber}>{stats.processing}</Text>
                   <Text style={styles.taskStatLabel}>进行中</Text>
                 </View>
                 <View style={styles.taskStat}>
-                  <Text style={styles.taskStatNumber}>5.2km</Text>
+                  <Text style={styles.taskStatNumber}>{dashboardStats?.patrol_stats?.distance || '0.0'}km</Text>
                   <Text style={styles.taskStatLabel}>巡查距离</Text>
                 </View>
               </View>
@@ -378,15 +395,6 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#dc2626',
-  },
-  messageDot: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#2563eb',
   },
   statsContainer: {
     flexDirection: 'row',

@@ -19,7 +19,7 @@ import FileUploadService from '@/utils/FileUploadService';
 import problemCategoryService from '@/utils/ProblemCategoryService';
 
 export default function StatisticsScreen() {
-  const { workOrders } = useAppContext();
+  const { workOrders, currentUser, statsRefreshTrigger } = useAppContext();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [statsData, setStatsData] = useState({
     overview: {
@@ -53,7 +53,7 @@ export default function StatisticsScreen() {
 
   useEffect(() => {
     loadStatistics();
-  }, [workOrders]);
+  }, [workOrders, statsRefreshTrigger]);
 
   const loadStatistics = async () => {
     try {
@@ -73,7 +73,7 @@ export default function StatisticsScreen() {
       const topLocations = generateTopLocations();
 
       // 考勤统计
-      const attendanceStats = await AttendanceService.getAttendanceStats('P001');
+      const attendanceStats = await AttendanceService.getAttendanceStats(currentUser?.username || '');
       
       // 轨迹统计
       const trackStats = await LocationService.getTrackStats();
@@ -366,9 +366,9 @@ export default function StatisticsScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>效率分析</Text>
             <View style={styles.efficiencyList}>
-              {renderEfficiencyItem('check-circle', '平均处理时长', '2.5小时', '#10B981')}
-              {renderEfficiencyItem('warning', '超时处理', '3件', '#F59E0B')}
-              {renderEfficiencyItem('bar-chart', '响应及时率', '98%', '#3B82F6')}
+              {renderEfficiencyItem('check-circle', '平均处理时长', `${Math.round(statsData.tracking.averageSpeed * 24)}小时`, '#10B981')}
+              {renderEfficiencyItem('warning', '超时处理', `${statsData.overview.pendingReports}件`, '#F59E0B')}
+              {renderEfficiencyItem('bar-chart', '完成率', `${statsData.overview.completionRate}%`, '#3B82F6')}
             </View>
           </View>
         </ScrollView>

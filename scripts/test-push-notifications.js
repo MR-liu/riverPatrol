@@ -17,7 +17,7 @@ const TEST_USER_CREDENTIALS = {
 // 测试用户和工单
 const TEST_USERS = {
   admin: { id: 'U001', username: 'admin', name: '系统管理员' },
-  worker: { id: 'U002', username: 'P001', name: '张三' },
+  worker: { id: 'U002', username: 'TESTUSER', name: '张三' },
   supervisor: { id: 'U003', username: 'P002', name: '李四' }
 };
 

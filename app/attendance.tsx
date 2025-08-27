@@ -17,10 +17,12 @@ import { router } from 'expo-router';
 import AttendanceService from '@/utils/AttendanceService';
 import LocationService from '@/utils/LocationService';
 import { LoadingState } from '@/components/LoadingState';
+import { useAppContext } from '@/contexts/AppContext';
 
 const { width } = Dimensions.get('window');
 
 export default function AttendanceScreen() {
+  const { currentUser } = useAppContext();
   const [isLoading, setIsLoading] = useState(true);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [attendanceStatus, setAttendanceStatus] = useState<'checked_out' | 'checked_in'>('checked_out');
@@ -48,10 +50,10 @@ export default function AttendanceScreen() {
     setIsLoading(true);
     try {
       const [status, todayData, weekData, monthData] = await Promise.all([
-        AttendanceService.getCurrentStatus(),
-        AttendanceService.getTodayRecord(),
-        AttendanceService.getWeekStats('P001'),
-        AttendanceService.getMonthlyRecords('P001'),
+        AttendanceService.getCurrentStatus(currentUser?.username || ''),
+        AttendanceService.getTodayRecord(currentUser?.username || ''),
+        AttendanceService.getWeekStats(currentUser?.username || ''),
+        AttendanceService.getMonthlyRecords(currentUser?.username || ''),
       ]);
 
       setAttendanceStatus(status);
@@ -77,7 +79,7 @@ export default function AttendanceScreen() {
       }
 
       if (attendanceStatus === 'checked_out') {
-        const success = await AttendanceService.checkIn('P001', {
+        const success = await AttendanceService.checkIn(currentUser?.username || '', {
           latitude: location?.latitude,
           longitude: location?.longitude,
           address: location?.address,
@@ -91,7 +93,7 @@ export default function AttendanceScreen() {
           Alert.alert('签到失败', '请重试');
         }
       } else {
-        const success = await AttendanceService.checkOut('P001', {
+        const success = await AttendanceService.checkOut(currentUser?.username || '', {
           latitude: location?.latitude,
           longitude: location?.longitude,
           address: location?.address,

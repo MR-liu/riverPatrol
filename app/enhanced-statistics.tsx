@@ -158,7 +158,7 @@ const SimpleLineChart = ({ data, height = 120 }: { data: any[], height?: number 
 };
 
 export default function EnhancedStatisticsScreen() {
-  const { workOrders } = useAppContext();
+  const { workOrders, currentUser, statsRefreshTrigger } = useAppContext();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTimeRange, setSelectedTimeRange] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
@@ -220,7 +220,7 @@ export default function EnhancedStatisticsScreen() {
 
   useEffect(() => {
     loadStatistics();
-  }, [workOrders, selectedTimeRange]);
+  }, [workOrders, selectedTimeRange, statsRefreshTrigger]);
 
   const loadStatistics = async () => {
     setIsLoading(true);
@@ -234,7 +234,7 @@ export default function EnhancedStatisticsScreen() {
         messageStats,
       ] = await Promise.all([
         ReportService.getReports(),
-        AttendanceService.getAttendanceStats('P001'),
+        AttendanceService.getAttendanceStats(currentUser?.username || ''),
         LocationService.getTrackStats(),
         FileUploadService.getUploadStats(),
         MessageService.getMessageStats(),

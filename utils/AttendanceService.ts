@@ -366,7 +366,7 @@ class AttendanceService {
           return;
       }
 
-      await AsyncStorage.setItem(`attendance_status_P001`, JSON.stringify({
+      await AsyncStorage.setItem(`attendance_status_${userId}`, JSON.stringify({
         currentStatus: newStatus,
         lastUpdated: Date.now(),
       }));
@@ -430,9 +430,9 @@ class AttendanceService {
   }
 
   // 获取当前状态（简化版本）
-  async getCurrentStatus(): Promise<'checked_in' | 'checked_out'> {
+  async getCurrentStatus(userId: string = ''): Promise<'checked_in' | 'checked_out'> {
     try {
-      const status = await this.getCurrentAttendanceStatus('P001');
+      const status = await this.getCurrentAttendanceStatus(userId || 'P001');
       return status === 'on_patrol' ? 'checked_in' : status;
     } catch (error) {
       console.error('Get current status error:', error);
@@ -441,9 +441,9 @@ class AttendanceService {
   }
 
   // 获取今日记录
-  async getTodayRecord(): Promise<any> {
+  async getTodayRecord(userId: string = ''): Promise<any> {
     try {
-      const records = await this.getTodayCheckIns('P001');
+      const records = await this.getTodayCheckIns(userId || 'P001');
       const checkIns = records.filter(r => r.type === 'check_in');
       const checkOuts = records.filter(r => r.type === 'check_out');
       

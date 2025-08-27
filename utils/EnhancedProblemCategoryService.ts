@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getSupabaseUrl, getAuthHeaders } from './SupabaseConfig';
 
 export interface ProblemCategory {
   name: string;
@@ -108,16 +109,33 @@ class EnhancedProblemCategoryService {
    * 从后端获取分类数据
    */
   private static async fetchFromBackend(supabaseUrl?: string): Promise<void> {
-    const baseUrl = supabaseUrl || 'http://localhost:54321'; // 默认本地开发地址
+    // 强制重新获取URL以确保平台检测生效
+    const baseUrl = supabaseUrl || getSupabaseUrl();
     const url = `${baseUrl}/functions/v1/get-problem-categories`;
     
     console.log('正在从后端获取分类数据:', url);
+    console.log('检测到的平台信息:', {
+      platform: require('react-native').Platform.OS,
+      isDevice: require('expo-constants').default.isDevice,
+      baseUrl,
+      configUrl: require('./SupabaseConfig').SUPABASE_CONFIG.LOCAL_URL
+    });
+    
+    // 添加网络连接测试
+    try {
+      console.log('测试网络连接...');
+      const testResponse = await fetch(baseUrl, {
+        method: 'GET',
+        timeout: 5000,
+      });
+      console.log('网络测试结果:', testResponse.status);
+    } catch (networkError) {
+      console.log('网络测试失败:', networkError.message);
+    }
     
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      }
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {

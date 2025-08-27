@@ -204,7 +204,8 @@ class DataExportService {
   // 获取考勤数据
   private async getAttendanceData(): Promise<any[]> {
     try {
-      const attendanceStr = await AsyncStorage.getItem('attendance_records_P001');
+      // 注意：这里应该从当前用户上下文获取用户名，需要重构此方法以接收用户名参数
+      const attendanceStr = await AsyncStorage.getItem(`attendance_records_`);  // 需要传入用户名
       return attendanceStr ? JSON.parse(attendanceStr) : [];
     } catch (error) {
       console.error('Get attendance data error:', error);

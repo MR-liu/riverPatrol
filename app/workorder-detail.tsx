@@ -22,7 +22,7 @@ export const unstable_settings = {
 };
 
 export default function WorkOrderDetailScreen() {
-  const { selectedWorkOrder, setSelectedWorkOrder, workOrders, setWorkOrders } = useAppContext();
+  const { selectedWorkOrder, setSelectedWorkOrder, workOrders, setWorkOrders, currentUser } = useAppContext();
 
   if (!selectedWorkOrder) {
     return (
@@ -83,7 +83,7 @@ export default function WorkOrderDetailScreen() {
               setSelectedWorkOrder(updatedWorkOrder);
 
               // 开始轨迹记录
-              const trackId = await LocationService.startPatrolTrack('P001', selectedWorkOrder.id);
+              const trackId = await LocationService.startPatrolTrack(currentUser?.username || '', selectedWorkOrder.id);
               
               if (trackId) {
                 Alert.alert(

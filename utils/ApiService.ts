@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DataAdapterService, { BackendWorkOrder, BackendDashboardStats } from './DataAdapterService';
 import { WorkOrder } from '@/contexts/AppContext';
+import { getAuthHeaders } from './SupabaseConfig';
 
 /**
  * 后端API客户端 - 处理与Supabase Edge Functions的通信
@@ -37,15 +38,7 @@ class ApiService {
 
   // 获取认证头
   private static getAuthHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
-    }
-
-    return headers;
+    return getAuthHeaders(this.accessToken);
   }
 
   // 通用请求方法
@@ -73,10 +66,31 @@ class ApiService {
       return result;
     } catch (error) {
       console.error(`API请求失败 [${endpoint}]:`, error);
+      
+      // 区分网络错误和业务逻辑错误
+      if (error instanceof Error) {
+        // 如果是网络相关的错误
+        if (error.message.includes('Network request failed') || 
+            error.message.includes('fetch') ||
+            error.message.includes('timeout')) {
+          return {
+            success: false,
+            error: error.message,
+            message: '请检查网络连接'
+          };
+        }
+        // 业务逻辑错误（如密码错误、权限错误等）
+        return {
+          success: false,
+          error: error.message,
+          message: error.message // 直接使用服务器返回的错误信息
+        };
+      }
+      
       return {
         success: false,
-        error: error instanceof Error ? error.message : '网络请求失败',
-        message: '请检查网络连接'
+        error: '请求处理失败',
+        message: '请稍后重试'
       };
     }
   }
@@ -306,10 +320,9 @@ class ApiService {
       formData.append('related_id', relatedId);
     }
 
-    const headers: Record<string, string> = {};
-    if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
-    }
+    const headers = getAuthHeaders(this.accessToken);
+    // 移除 Content-Type，让浏览器自动设置（包含 boundary）
+    delete headers['Content-Type'];
 
     try {
       const response = await fetch(`${this.baseUrl}/upload-file`, {

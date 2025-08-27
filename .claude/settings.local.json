@@ -7,7 +7,14 @@
       "Bash(SUPABASE_URL=\"https://demo.supabase.co\" node:*)",
       "Bash(supabase:*)",
       "Bash(SUPABASE_URL=\"http://127.0.0.1:54321\" node:*)",
-      "Bash(npx:*)"
+      "Bash(npx:*)",
+      "Bash(mv:*)",
+      "Bash(yarn:*)",
+      "Bash(adb:*)",
+      "Bash(lsof:*)",
+      "Bash(pkill:*)",
+      "Bash(kill 36237)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

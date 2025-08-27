@@ -16,6 +16,7 @@ import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
 import { LoadingState } from '@/components/LoadingState';
+import { useAppContext } from '@/contexts/AppContext';
 
 interface UserProfile {
   id: string;
@@ -35,22 +36,23 @@ interface UserProfile {
 }
 
 export default function ProfileEditScreen() {
+  const { currentUser } = useAppContext();
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<UserProfile>({
-    id: 'P001',
-    name: '张三',
-    employeeId: 'P001',
-    position: '河道巡查员',
+    id: currentUser?.id || '',
+    name: currentUser?.name || '',
+    employeeId: currentUser?.username || '',
+    position: currentUser?.role || '河道巡查员',
     department: '环保巡查部',
-    phone: '138****5678',
-    email: 'zhangsan@example.com',
+    phone: currentUser?.phone || '',
+    email: currentUser?.email || '',
     avatar: '',
-    workLocation: '上海市黄浦区河道片区A',
-    joinDate: '2023-01-15',
-    emergencyContact: '李四',
-    emergencyPhone: '139****1234',
-    address: '上海市黄浦区XXX街道XXX号',
-    idCard: '310101199001010000',
+    workLocation: '',
+    joinDate: '',
+    emergencyContact: '',
+    emergencyPhone: '',
+    address: '',
+    idCard: '',
   });
 
   const [isEditing, setIsEditing] = useState(false);

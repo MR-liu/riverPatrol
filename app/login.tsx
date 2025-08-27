@@ -7,15 +7,18 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppStatusBar, StatusBarConfigs } from '@/components/AppStatusBar';
 
 import { useAppContext } from '@/contexts/AppContext';
+
+const { height } = Dimensions.get('window');
 
 export default function LoginScreen() {
   const {
@@ -26,6 +29,7 @@ export default function LoginScreen() {
     setIsLoggedIn,
     loginWithBackend,
     isLoading,
+    isInitializing,
     error,
     setError,
   } = useAppContext();
@@ -54,12 +58,8 @@ export default function LoginScreen() {
         // 保存登录信息到本地存储
         await AsyncStorage.setItem('loginInfo', JSON.stringify(loginInfo));
         
-        Alert.alert('登录成功', '欢迎使用智慧河道巡查系统', [
-          {
-            text: '确定',
-            onPress: () => router.replace('/(tabs)')
-          }
-        ]);
+        // 直接跳转，不显示成功弹窗
+        router.replace('/(tabs)');
       } else {
         // 错误信息已经在loginWithBackend中设置
         const errorMessage = error?.message || '登录失败，请检查用户名和密码';
@@ -72,96 +72,118 @@ export default function LoginScreen() {
   };
 
   return (
-    <LinearGradient
-      colors={['#3B82F6', '#1E40AF', '#1E3A8A']}
-      style={styles.container}
-    >
-      <AppStatusBar {...StatusBarConfigs.login} />
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <View style={[styles.content, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-          {/* Logo区域 */}
-          <View style={styles.logoContainer}>
-            <MaterialIcons name="waves" size={80} color="white" />
-            <Text style={styles.title}>智慧河道巡查</Text>
-            <Text style={styles.subtitle}>River Patrol System</Text>
+    <View style={styles.container}>
+      <LinearGradient
+        colors={['#3B82F6', '#1E40AF', '#1E3A8A']}
+        style={styles.fullScreenContainer}
+      >
+        <AppStatusBar {...StatusBarConfigs.login} />
+        {isInitializing ? (
+          <View style={styles.initializingContainer}>
+            <ActivityIndicator size="large" color="white" />
+            <Text style={styles.initializingText}>正在初始化应用...</Text>
           </View>
-
-          {/* 登录表单 */}
-          <View style={styles.formContainer}>
-            <View style={styles.inputContainer}>
-              <MaterialIcons name="person" size={24} color="#6B7280" />
-              <TextInput
-                style={styles.input}
-                placeholder="请输入用户名"
-                placeholderTextColor="#9CA3AF"
-                value={username}
-                onChangeText={setUsername}
-                autoCapitalize="none"
-              />
+        ) : (
+          <View style={styles.content}>
+            {/* Logo区域 */}
+            <View style={styles.logoContainer}>
+              <MaterialIcons name="waves" size={80} color="white" />
+              <Text style={styles.title}>智慧河道巡查</Text>
+              <Text style={styles.subtitle}>River Patrol System</Text>
+              {/* 强制更新 v2 - 修复背景问题 */}
             </View>
 
-            <View style={styles.inputContainer}>
-              <MaterialIcons name="lock" size={24} color="#6B7280" />
-              <TextInput
-                style={styles.input}
-                placeholder="请输入密码"
-                placeholderTextColor="#9CA3AF"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeIcon}
-              >
-                <MaterialIcons
-                  name={showPassword ? 'visibility' : 'visibility-off'}
-                  size={24}
-                  color="#6B7280"
+            {/* 登录表单 */}
+            <View style={styles.formContainer}>
+              <View style={styles.inputContainer}>
+                <MaterialIcons name="person" size={24} color="#6B7280" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="请输入用户名"
+                  placeholderTextColor="#9CA3AF"
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
                 />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <MaterialIcons name="lock" size={24} color="#6B7280" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="请输入密码"
+                  placeholderTextColor="#9CA3AF"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeIcon}
+                >
+                  <MaterialIcons
+                    name={showPassword ? 'visibility' : 'visibility-off'}
+                    size={24}
+                    color="#6B7280"
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity 
+                style={[styles.loginButton, isLoading && styles.loginButtonDisabled]} 
+                onPress={handleLogin}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <View style={styles.loginButtonContent}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <Text style={[styles.loginButtonText, { marginLeft: 8 }]}>登录中...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.loginButtonText}>登录</Text>
+                )}
               </TouchableOpacity>
-            </View>
 
-            <TouchableOpacity 
-              style={[styles.loginButton, isLoading && styles.loginButtonDisabled]} 
-              onPress={handleLogin}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <View style={styles.loginButtonContent}>
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                  <Text style={[styles.loginButtonText, { marginLeft: 8 }]}>登录中...</Text>
-                </View>
-              ) : (
-                <Text style={styles.loginButtonText}>登录</Text>
-              )}
-            </TouchableOpacity>
-
-            <View style={styles.helpContainer}>
-              <Text style={styles.helpText}>请使用后端配置的用户名和密码登录</Text>
-              {error && (
-                <Text style={styles.errorText}>{error.message}</Text>
-              )}
+              <View style={styles.helpContainer}>
+                <Text style={styles.helpText}>请使用后端配置的用户名和密码登录</Text>
+                {error && (
+                  <Text style={styles.errorText}>{error.message}</Text>
+                )}
+              </View>
             </View>
           </View>
-        </View>
-      </SafeAreaView>
-    </LinearGradient>
+        )}
+      </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#1E3A8A', // 确保整个容器是蓝色背景
   },
-  safeArea: {
+  fullScreenContainer: {
     flex: 1,
+  },
+  initializingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  initializingText: {
+    color: 'white',
+    fontSize: 16,
+    marginTop: 16,
   },
   content: {
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 32,
+    paddingTop: 100,
+    paddingBottom: 60,
   },
   logoContainer: {
     alignItems: 'center',

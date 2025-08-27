@@ -27,10 +27,10 @@ export const AppStatusBar: React.FC<AppStatusBarProps> = ({
 
 // 预定义的状态栏配置
 export const StatusBarConfigs = {
-  // 登录页面 - 蓝色背景
+  // 登录页面 - 透明状态栏，让渐变背景延伸到状态栏区域
   login: {
     style: 'light-content' as const,
-    backgroundColor: '#3B82F6',
+    backgroundColor: 'transparent',
     translucent: true,
   },
   

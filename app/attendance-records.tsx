@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 
 import AttendanceService from '@/utils/AttendanceService';
 import { LoadingState } from '@/components/LoadingState';
+import { useAppContext } from '@/contexts/AppContext';
 
 const { width } = Dimensions.get('window');
 
@@ -37,6 +38,7 @@ interface AttendanceRecord {
 }
 
 export default function AttendanceRecordsScreen() {
+  const { currentUser } = useAppContext();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -64,8 +66,8 @@ export default function AttendanceRecordsScreen() {
       const month = selectedMonth.getMonth() + 1;
       
       const [recordsData, statsData] = await Promise.all([
-        AttendanceService.getMonthlyRecords('P001', year, month),
-        AttendanceService.getMonthStats('P001', year, month),
+        AttendanceService.getMonthlyRecords(currentUser?.username || '', year, month),
+        AttendanceService.getMonthStats(currentUser?.username || '', year, month),
       ]);
 
       setRecords(recordsData);

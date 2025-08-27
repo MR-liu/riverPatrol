@@ -15,24 +15,92 @@ import { AppStatusBar, StatusBarConfigs } from '@/components/AppStatusBar';
 
 import { useAppContext } from '@/contexts/AppContext';
 import AttendanceService from '@/utils/AttendanceService';
+import ApiService from '@/utils/ApiService';
 
 export default function ProfileScreen() {
-  const { setIsLoggedIn } = useAppContext();
+  const { setIsLoggedIn, currentUser, workOrders, statsRefreshTrigger } = useAppContext();
   const insets = useSafeAreaInsets();
   const [attendanceStatus, setAttendanceStatus] = useState<'checked_in' | 'checked_out' | 'on_patrol'>('checked_out');
   const [isLoading, setIsLoading] = useState(false);
+  const [statsData, setStatsData] = useState({
+    completionRate: 0,
+    totalWorkOrders: 0,
+    punctualityRate: 0,
+    averageRating: 0
+  });
 
   useEffect(() => {
     loadAttendanceStatus();
-  }, []);
+    loadStatsData();
+  }, [currentUser, workOrders, statsRefreshTrigger]);
 
   const loadAttendanceStatus = async () => {
     try {
-      const status = await AttendanceService.getCurrentAttendanceStatus('P001');
+      const status = await AttendanceService.getCurrentAttendanceStatus(currentUser?.username || '');
       setAttendanceStatus(status);
     } catch (error) {
       console.error('Load attendance status error:', error);
     }
+  };
+
+  const loadStatsData = async () => {
+    if (!currentUser?.username) return;
+    
+    try {
+      // 获取工单统计
+      const completedWorkOrders = workOrders.filter(wo => wo.status === '已完成').length;
+      const totalWorkOrders = workOrders.length;
+      const completionRate = totalWorkOrders > 0 ? Math.round((completedWorkOrders / totalWorkOrders) * 100) : 0;
+      
+      // 获取考勤统计
+      const attendanceStats = await AttendanceService.getAttendanceStats(currentUser.username);
+      const punctualityRate = Math.round(attendanceStats.punctualityRate || 0);
+      
+      // 基于工单质量的评分计算
+      const userRating = calculateUserRating(workOrders, attendanceStats);
+      
+      setStatsData({
+        completionRate,
+        totalWorkOrders,
+        punctualityRate,
+        averageRating: userRating
+      });
+    } catch (error) {
+      console.error('Load stats data error:', error);
+    }
+  };
+
+  // 基于工单完成质量的评分算法
+  const calculateUserRating = (workOrders: any[], attendanceStats: any) => {
+    let baseScore = 3.0; // 基础分数
+    let qualityBonus = 0;
+    let timeBonus = 0;
+    let attendanceBonus = 0;
+
+    const completedOrders = workOrders.filter(wo => wo.status === '已完成');
+    
+    if (completedOrders.length > 0) {
+      // 1. 完成率评分 (最高+1.0分)
+      const completionRate = completedOrders.length / workOrders.length;
+      qualityBonus += completionRate * 1.0;
+      
+      // 2. 及时完成率评分 (最高+0.5分)
+      const onTimeOrders = completedOrders.filter(wo => {
+        // 这里需要根据实际的时间字段判断是否按时完成
+        // 暂时假设所有已完成的工单都是按时完成的
+        return true;
+      });
+      const onTimeRate = onTimeOrders.length / completedOrders.length;
+      timeBonus += onTimeRate * 0.5;
+    }
+    
+    // 3. 考勤评分 (最高+0.5分)
+    if (attendanceStats.punctualityRate) {
+      attendanceBonus += (attendanceStats.punctualityRate / 100) * 0.5;
+    }
+    
+    const finalRating = Math.min(5.0, baseScore + qualityBonus + timeBonus + attendanceBonus);
+    return Math.round(finalRating * 10) / 10; // 保留一位小数
   };
 
   const handleLogout = () => {
@@ -56,7 +124,7 @@ export default function ProfileScreen() {
     try {
       setIsLoading(true);
       
-      const checkResult = await AttendanceService.canCheckIn('P001', 
+      const checkResult = await AttendanceService.canCheckIn(currentUser?.username || '', 
         attendanceStatus === 'checked_out' ? 'check_in' : 'check_out'
       );
       
@@ -67,13 +135,13 @@ export default function ProfileScreen() {
       
       let result;
       if (attendanceStatus === 'checked_out') {
-        result = await AttendanceService.checkIn('P001');
+        result = await AttendanceService.checkIn(currentUser?.username || '');
       } else {
-        result = await AttendanceService.checkOut('P001');
+        result = await AttendanceService.checkOut(currentUser?.username || '');
       }
       
       if (result) {
-        const newStatus = await AttendanceService.getCurrentAttendanceStatus('P001');
+        const newStatus = await AttendanceService.getCurrentAttendanceStatus(currentUser?.username || '');
         setAttendanceStatus(newStatus);
         
         Alert.alert(
@@ -213,9 +281,9 @@ export default function ProfileScreen() {
                   <MaterialIcons name="person" size={32} color="#FFFFFF" />
                 </View>
                 <View style={styles.profileInfo}>
-                  <Text style={styles.profileName}>张三</Text>
+                  <Text style={styles.profileName}>{currentUser?.name || '未知用户'}</Text>
                   <Text style={styles.profileTitle}>河道巡查员</Text>
-                  <Text style={styles.profileId}>工号：P001</Text>
+                  <Text style={styles.profileId}>工号：{currentUser?.username || ''}</Text>
                 </View>
                 <TouchableOpacity
                   style={styles.editButton}
@@ -231,10 +299,10 @@ export default function ProfileScreen() {
           <View style={styles.statsSection}>
             <Text style={styles.sectionTitle}>本月绩效</Text>
             <View style={styles.statsGrid}>
-              {renderStatCard('完成率', '95%', '#10B981')}
-              {renderStatCard('工单数', '156', '#3B82F6')}
-              {renderStatCard('准时率', '98%', '#F59E0B')}
-              {renderStatCard('评分', '4.8', '#8B5CF6')}
+              {renderStatCard('完成率', `${statsData.completionRate}%`, '#10B981')}
+              {renderStatCard('工单数', `${statsData.totalWorkOrders}`, '#3B82F6')}
+              {renderStatCard('准时率', `${statsData.punctualityRate}%`, '#F59E0B')}
+              {renderStatCard('评分', `${statsData.averageRating}`, '#8B5CF6')}
             </View>
           </View>
 

@@ -15,8 +15,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { LoadingState } from '@/components/LoadingState';
+import { useAppContext } from '@/contexts/AppContext';
 
 export default function AccountSecurityScreen() {
+  const { currentUser } = useAppContext();
   const [isLoading, setIsLoading] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
@@ -66,7 +68,7 @@ export default function AccountSecurityScreen() {
 
     setIsLoading(true);
     try {
-      // 模拟API调用
+      // TODO: 调用API修改密码
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       Alert.alert('修改成功', '密码已成功修改，请重新登录', [
@@ -87,237 +89,118 @@ export default function AccountSecurityScreen() {
     }
   };
 
-  const sendPhoneVerifyCode = async () => {
-    if (!newPhone) {
-      Alert.alert('提示', '请输入新手机号');
+  const handleSendPhoneCode = async () => {
+    if (!newPhone || newPhone.length !== 11) {
+      Alert.alert('提示', '请输入正确的手机号码');
       return;
     }
 
-    if (!/^1[3-9]\d{9}$/.test(newPhone)) {
-      Alert.alert('提示', '请输入正确的手机号格式');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setPhoneCodeSent(true);
-      setPhoneCountdown(60);
-      
-      // 倒计时
-      const timer = setInterval(() => {
-        setPhoneCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            setPhoneCodeSent(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      
-      Alert.alert('发送成功', '验证码已发送到新手机号');
-    } catch (error) {
-      Alert.alert('发送失败', '验证码发送失败，请重试');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleChangePhone = async () => {
-    if (!newPhone || !phoneVerifyCode) {
-      Alert.alert('提示', '请填写手机号和验证码');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      Alert.alert('修改成功', '手机号已成功修改', [
-        {
-          text: '确定',
-          onPress: () => {
-            setShowPhoneModal(false);
-            setNewPhone('');
-            setPhoneVerifyCode('');
-            setPhoneCodeSent(false);
-          }
+    setPhoneCodeSent(true);
+    setPhoneCountdown(60);
+    
+    const timer = setInterval(() => {
+      setPhoneCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setPhoneCodeSent(false);
+          return 0;
         }
-      ]);
-    } catch (error) {
-      Alert.alert('修改失败', '手机号修改失败，请重试');
-    } finally {
-      setIsLoading(false);
-    }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // TODO: 调用发送验证码API
   };
 
-  const sendEmailVerifyCode = async () => {
-    if (!newEmail) {
-      Alert.alert('提示', '请输入新邮箱地址');
+  const handleSendEmailCode = async () => {
+    if (!newEmail || !newEmail.includes('@')) {
+      Alert.alert('提示', '请输入正确的邮箱地址');
       return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
-      Alert.alert('提示', '请输入正确的邮箱格式');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setEmailCodeSent(true);
-      setEmailCountdown(60);
-      
-      const timer = setInterval(() => {
-        setEmailCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            setEmailCodeSent(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      
-      Alert.alert('发送成功', '验证码已发送到新邮箱');
-    } catch (error) {
-      Alert.alert('发送失败', '验证码发送失败，请重试');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleChangeEmail = async () => {
-    if (!newEmail || !emailVerifyCode) {
-      Alert.alert('提示', '请填写邮箱和验证码');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      Alert.alert('修改成功', '邮箱已成功修改', [
-        {
-          text: '确定',
-          onPress: () => {
-            setShowEmailModal(false);
-            setNewEmail('');
-            setEmailVerifyCode('');
-            setEmailCodeSent(false);
-          }
+    setEmailCodeSent(true);
+    setEmailCountdown(60);
+    
+    const timer = setInterval(() => {
+      setEmailCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setEmailCodeSent(false);
+          return 0;
         }
-      ]);
-    } catch (error) {
-      Alert.alert('修改失败', '邮箱修改失败，请重试');
-    } finally {
-      setIsLoading(false);
-    }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // TODO: 调用发送验证码API
   };
 
-  const toggleSecuritySetting = async (key: keyof typeof securitySettings) => {
-    const newValue = !securitySettings[key];
-    setSecuritySettings(prev => ({
-      ...prev,
-      [key]: newValue
-    }));
-
-    // 模拟保存设置
-    try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const settingNames = {
-        twoFactorAuth: '双重认证',
-        loginNotification: '登录通知',
-        deviceBinding: '设备绑定',
-        autoLogout: '自动登出',
-        biometricAuth: '生物识别'
-      };
-      
-      Alert.alert('设置成功', `${settingNames[key]}已${newValue ? '开启' : '关闭'}`);
-    } catch (error) {
-      // 回滚设置
-      setSecuritySettings(prev => ({
-        ...prev,
-        [key]: !newValue
-      }));
-      Alert.alert('设置失败', '设置保存失败，请重试');
-    }
-  };
-
-  const renderSecurityItem = (
-    icon: string, 
-    title: string, 
-    subtitle: string, 
-    action: () => void,
-    rightElement?: React.ReactNode
-  ) => (
-    <TouchableOpacity style={styles.securityItem} onPress={action}>
+  const renderSecurityItem = (icon: string, title: string, value: string, onPress: () => void) => (
+    <TouchableOpacity style={styles.securityItem} onPress={onPress}>
       <View style={styles.securityItemLeft}>
-        <View style={styles.securityIcon}>
-          <MaterialIcons name={icon as any} size={20} color="#3B82F6" />
-        </View>
-        <View style={styles.securityInfo}>
-          <Text style={styles.securityTitle}>{title}</Text>
-          <Text style={styles.securitySubtitle}>{subtitle}</Text>
-        </View>
+        <MaterialIcons name={icon as any} size={20} color="#6B7280" />
+        <Text style={styles.securityItemTitle}>{title}</Text>
       </View>
-      {rightElement || <MaterialIcons name="chevron-right" size={20} color="#D1D5DB" />}
+      <View style={styles.securityItemRight}>
+        <Text style={styles.securityItemValue}>{value}</Text>
+        <MaterialIcons name="chevron-right" size={20} color="#D1D5DB" />
+      </View>
     </TouchableOpacity>
   );
 
-  const renderModal = (
-    visible: boolean,
-    onClose: () => void,
-    title: string,
-    children: React.ReactNode
-  ) => (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <SafeAreaView style={styles.modalContainer}>
-        <View style={styles.modalHeader}>
-          <TouchableOpacity style={styles.modalCloseButton} onPress={onClose}>
-            <MaterialIcons name="close" size={24} color="#6B7280" />
-          </TouchableOpacity>
-          <Text style={styles.modalTitle}>{title}</Text>
-          <View style={styles.modalCloseButton} />
+  const renderSecuritySwitch = (title: string, description: string, key: keyof typeof securitySettings) => (
+    <View style={styles.switchItem}>
+      <View style={styles.switchLeft}>
+        <Text style={styles.switchTitle}>{title}</Text>
+        <Text style={styles.switchDescription}>{description}</Text>
+      </View>
+      <TouchableOpacity
+        style={[styles.switch, securitySettings[key] && styles.switchActive]}
+        onPress={() => setSecuritySettings(prev => ({ ...prev, [key]: !prev[key] }))}
+      >
+        <View style={[styles.switchThumb, securitySettings[key] && styles.switchThumbActive]} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderModal = (visible: boolean, onClose: () => void, title: string, children: React.ReactNode) => (
+    <Modal visible={visible} transparent animationType="slide">
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{title}</Text>
+            <TouchableOpacity onPress={onClose}>
+              <MaterialIcons name="close" size={24} color="#6B7280" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalContent}>
+            {children}
+          </ScrollView>
         </View>
-        <ScrollView style={styles.modalContent}>
-          {children}
-        </ScrollView>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.back()}
-        >
-          <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>账户安全</Text>
-        <View style={styles.headerButton} />
-      </View>
+      <LinearGradient colors={['#3B82F6', '#6366F1']} style={styles.header}>
+        <View style={styles.headerContent}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={styles.title}>账户安全</Text>
+        </View>
+      </LinearGradient>
 
-      <LinearGradient
-        colors={['#F8FAFC', '#EBF4FF', '#E0E7FF']}
-        style={styles.background}
-      >
-        <LoadingState isLoading={isLoading && !showPasswordModal && !showPhoneModal && !showEmailModal}>
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            {/* 账户信息 */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <MaterialIcons name="account-circle" size={16} color="#374151" />
-                <Text style={styles.cardTitle}>账户信息</Text>
-              </View>
-              
+      <LoadingState isLoading={isLoading}>
+        <ScrollView style={styles.content}>
+          {/* 安全设置 */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>安全设置</Text>
+            <View style={styles.cardContent}>
               {renderSecurityItem(
                 'lock',
                 '登录密码',
@@ -328,269 +211,175 @@ export default function AccountSecurityScreen() {
               {renderSecurityItem(
                 'phone',
                 '绑定手机',
-                '138****5678',
+                currentUser?.phone ? currentUser.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') : '未绑定',
                 () => setShowPhoneModal(true)
               )}
               
               {renderSecurityItem(
                 'email',
                 '绑定邮箱',
-                'user@example.com',
+                currentUser?.email || '未绑定',
                 () => setShowEmailModal(true)
               )}
             </View>
-
-            {/* 安全设置 */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <MaterialIcons name="security" size={16} color="#374151" />
-                <Text style={styles.cardTitle}>安全设置</Text>
-              </View>
-              
-              {renderSecurityItem(
-                'verified-user',
-                '双重认证',
-                '为账户添加额外的安全保护',
-                () => toggleSecuritySetting('twoFactorAuth'),
-                <View style={styles.switch}>
-                  <View style={[styles.switchTrack, securitySettings.twoFactorAuth && styles.switchTrackActive]}>
-                    <View style={[styles.switchThumb, securitySettings.twoFactorAuth && styles.switchThumbActive]} />
-                  </View>
-                </View>
-              )}
-              
-              {renderSecurityItem(
-                'notifications',
-                '登录通知',
-                '账户登录时发送通知提醒',
-                () => toggleSecuritySetting('loginNotification'),
-                <View style={styles.switch}>
-                  <View style={[styles.switchTrack, securitySettings.loginNotification && styles.switchTrackActive]}>
-                    <View style={[styles.switchThumb, securitySettings.loginNotification && styles.switchThumbActive]} />
-                  </View>
-                </View>
-              )}
-              
-              {renderSecurityItem(
-                'devices',
-                '设备绑定',
-                '限制登录设备数量',
-                () => toggleSecuritySetting('deviceBinding'),
-                <View style={styles.switch}>
-                  <View style={[styles.switchTrack, securitySettings.deviceBinding && styles.switchTrackActive]}>
-                    <View style={[styles.switchThumb, securitySettings.deviceBinding && styles.switchThumbActive]} />
-                  </View>
-                </View>
-              )}
-              
-              {renderSecurityItem(
-                'timer',
-                '自动登出',
-                '长时间未操作时自动登出',
-                () => toggleSecuritySetting('autoLogout'),
-                <View style={styles.switch}>
-                  <View style={[styles.switchTrack, securitySettings.autoLogout && styles.switchTrackActive]}>
-                    <View style={[styles.switchThumb, securitySettings.autoLogout && styles.switchThumbActive]} />
-                  </View>
-                </View>
-              )}
-              
-              {renderSecurityItem(
-                'fingerprint',
-                '生物识别',
-                '使用指纹或面容登录',
-                () => toggleSecuritySetting('biometricAuth'),
-                <View style={styles.switch}>
-                  <View style={[styles.switchTrack, securitySettings.biometricAuth && styles.switchTrackActive]}>
-                    <View style={[styles.switchThumb, securitySettings.biometricAuth && styles.switchThumbActive]} />
-                  </View>
-                </View>
-              )}
-            </View>
-
-            {/* 登录记录 */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <MaterialIcons name="history" size={16} color="#374151" />
-                <Text style={styles.cardTitle}>最近登录</Text>
-              </View>
-              
-              <View style={styles.loginRecord}>
-                <View style={styles.loginItem}>
-                  <MaterialIcons name="smartphone" size={20} color="#10B981" />
-                  <View style={styles.loginInfo}>
-                    <Text style={styles.loginDevice}>iPhone 15 Pro</Text>
-                    <Text style={styles.loginTime}>今天 14:32 • 上海市</Text>
-                    <Text style={styles.loginStatus}>当前设备</Text>
-                  </View>
-                </View>
-                
-                <View style={styles.loginItem}>
-                  <MaterialIcons name="computer" size={20} color="#6B7280" />
-                  <View style={styles.loginInfo}>
-                    <Text style={styles.loginDevice}>Windows PC</Text>
-                    <Text style={styles.loginTime}>昨天 09:15 • 上海市</Text>
-                    <Text style={styles.loginStatus}>已退出</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-          </ScrollView>
-        </LoadingState>
-
-        {/* 修改密码Modal */}
-        {renderModal(
-          showPasswordModal,
-          () => setShowPasswordModal(false),
-          '修改密码',
-          <View style={styles.formContainer}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>当前密码</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="请输入当前密码"
-                secureTextEntry
-                value={oldPassword}
-                onChangeText={setOldPassword}
-              />
-            </View>
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>新密码</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="请输入新密码（至少6位）"
-                secureTextEntry
-                value={newPassword}
-                onChangeText={setNewPassword}
-              />
-            </View>
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>确认新密码</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="请再次输入新密码"
-                secureTextEntry
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-              />
-            </View>
-            
-            <TouchableOpacity 
-              style={styles.submitButton}
-              onPress={handleChangePassword}
-              disabled={isLoading}
-            >
-              <Text style={styles.submitButtonText}>
-                {isLoading ? '修改中...' : '确认修改'}
-              </Text>
-            </TouchableOpacity>
           </View>
-        )}
 
-        {/* 修改手机号Modal */}
-        {renderModal(
-          showPhoneModal,
-          () => setShowPhoneModal(false),
-          '修改手机号',
-          <View style={styles.formContainer}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>新手机号</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="请输入新手机号"
-                keyboardType="phone-pad"
-                value={newPhone}
-                onChangeText={setNewPhone}
-              />
+          <View style={styles.menuSection}>
+            <Text style={styles.sectionTitle}>安全设置</Text>
+            <View style={styles.menuCard}>
+              {renderSecuritySwitch('双因素认证', '提供额外的账户安全保障', 'twoFactorAuth')}
+              {renderSecuritySwitch('登录通知', '登录时发送通知提醒', 'loginNotification')}
+              {renderSecuritySwitch('设备绑定', '限制仅可从授权设备登录', 'deviceBinding')}
+              {renderSecuritySwitch('自动登出', '长时间未操作自动登出', 'autoLogout')}
+              {renderSecuritySwitch('生物认证', '启用指纹或面容识别', 'biometricAuth')}
             </View>
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>验证码</Text>
-              <View style={styles.codeInputContainer}>
-                <TextInput
-                  style={[styles.textInput, styles.codeInput]}
-                  placeholder="请输入验证码"
-                  keyboardType="number-pad"
-                  value={phoneVerifyCode}
-                  onChangeText={setPhoneVerifyCode}
-                />
-                <TouchableOpacity 
-                  style={[styles.codeButton, phoneCodeSent && styles.codeButtonDisabled]}
-                  onPress={sendPhoneVerifyCode}
-                  disabled={phoneCodeSent || isLoading}
-                >
-                  <Text style={styles.codeButtonText}>
-                    {phoneCodeSent ? `${phoneCountdown}s` : '发送验证码'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            
-            <TouchableOpacity 
-              style={styles.submitButton}
-              onPress={handleChangePhone}
-              disabled={isLoading}
-            >
-              <Text style={styles.submitButtonText}>
-                {isLoading ? '修改中...' : '确认修改'}
-              </Text>
-            </TouchableOpacity>
           </View>
-        )}
+        </ScrollView>
+      </LoadingState>
 
-        {/* 修改邮箱Modal */}
-        {renderModal(
-          showEmailModal,
-          () => setShowEmailModal(false),
-          '修改邮箱',
-          <View style={styles.formContainer}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>新邮箱地址</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="请输入新邮箱地址"
-                keyboardType="email-address"
-                value={newEmail}
-                onChangeText={setNewEmail}
-              />
-            </View>
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>验证码</Text>
-              <View style={styles.codeInputContainer}>
-                <TextInput
-                  style={[styles.textInput, styles.codeInput]}
-                  placeholder="请输入验证码"
-                  keyboardType="number-pad"
-                  value={emailVerifyCode}
-                  onChangeText={setEmailVerifyCode}
-                />
-                <TouchableOpacity 
-                  style={[styles.codeButton, emailCodeSent && styles.codeButtonDisabled]}
-                  onPress={sendEmailVerifyCode}
-                  disabled={emailCodeSent || isLoading}
-                >
-                  <Text style={styles.codeButtonText}>
-                    {emailCodeSent ? `${emailCountdown}s` : '发送验证码'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            
-            <TouchableOpacity 
-              style={styles.submitButton}
-              onPress={handleChangeEmail}
-              disabled={isLoading}
-            >
-              <Text style={styles.submitButtonText}>
-                {isLoading ? '修改中...' : '确认修改'}
-              </Text>
-            </TouchableOpacity>
+      {/* 修改密码Modal */}
+      {renderModal(
+        showPasswordModal,
+        () => setShowPasswordModal(false),
+        '修改密码',
+        <View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>原密码</Text>
+            <TextInput
+              style={styles.input}
+              value={oldPassword}
+              onChangeText={setOldPassword}
+              secureTextEntry
+              placeholder="请输入原密码"
+            />
           </View>
-        )}
-      </LinearGradient>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>新密码</Text>
+            <TextInput
+              style={styles.input}
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              placeholder="请输入新密码"
+            />
+          </View>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>确认密码</Text>
+            <TextInput
+              style={styles.input}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              placeholder="请再次输入新密码"
+            />
+          </View>
+          
+          <TouchableOpacity 
+            style={styles.submitButton}
+            onPress={handleChangePassword}
+            disabled={isLoading}
+          >
+            <Text style={styles.submitButtonText}>
+              {isLoading ? '修改中...' : '确认修改'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* 修改手机号Modal */}
+      {renderModal(
+        showPhoneModal,
+        () => setShowPhoneModal(false),
+        '修改手机号',
+        <View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>新手机号</Text>
+            <TextInput
+              style={styles.input}
+              value={newPhone}
+              onChangeText={setNewPhone}
+              placeholder="请输入新手机号"
+              keyboardType="numeric"
+              maxLength={11}
+            />
+          </View>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>验证码</Text>
+            <View style={styles.codeInputContainer}>
+              <TextInput
+                style={[styles.input, styles.codeInput]}
+                value={phoneVerifyCode}
+                onChangeText={setPhoneVerifyCode}
+                placeholder="请输入验证码"
+                keyboardType="numeric"
+                maxLength={6}
+              />
+              <TouchableOpacity
+                style={[styles.sendCodeButton, phoneCodeSent && styles.sendCodeButtonDisabled]}
+                onPress={handleSendPhoneCode}
+                disabled={phoneCodeSent}
+              >
+                <Text style={styles.sendCodeButtonText}>
+                  {phoneCodeSent ? `${phoneCountdown}s` : '发送验证码'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          
+          <TouchableOpacity style={styles.submitButton}>
+            <Text style={styles.submitButtonText}>确认修改</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* 修改邮箱Modal */}
+      {renderModal(
+        showEmailModal,
+        () => setShowEmailModal(false),
+        '修改邮箱',
+        <View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>新邮箱</Text>
+            <TextInput
+              style={styles.input}
+              value={newEmail}
+              onChangeText={setNewEmail}
+              placeholder="请输入新邮箱地址"
+              keyboardType="email-address"
+            />
+          </View>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>验证码</Text>
+            <View style={styles.codeInputContainer}>
+              <TextInput
+                style={[styles.input, styles.codeInput]}
+                value={emailVerifyCode}
+                onChangeText={setEmailVerifyCode}
+                placeholder="请输入验证码"
+                keyboardType="numeric"
+                maxLength={6}
+              />
+              <TouchableOpacity
+                style={[styles.sendCodeButton, emailCodeSent && styles.sendCodeButtonDisabled]}
+                onPress={handleSendEmailCode}
+                disabled={emailCodeSent}
+              >
+                <Text style={styles.sendCodeButtonText}>
+                  {emailCodeSent ? `${emailCountdown}s` : '发送验证码'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          
+          <TouchableOpacity style={styles.submitButton}>
+            <Text style={styles.submitButtonText}>确认修改</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -598,62 +387,55 @@ export default function AccountSecurityScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#F9FAFB',
   },
   header: {
-    backgroundColor: '#3B82F6',
+    paddingTop: 20,
+    paddingBottom: 20,
+  },
+  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: 20,
   },
-  headerButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+  backButton: {
+    marginRight: 16,
   },
-  headerTitle: {
+  title: {
     fontSize: 18,
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  background: {
-    flex: 1,
-  },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    padding: 16,
   },
   card: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   cardTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1F2937',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  cardContent: {
+    padding: 0,
   },
   securityItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 16,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
@@ -662,103 +444,100 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  securityIcon: {
-    width: 40,
-    height: 40,
-    backgroundColor: '#EBF4FF',
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+  securityItemTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginLeft: 12,
   },
-  securityInfo: {
+  securityItemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  securityItemValue: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginRight: 8,
+  },
+  menuSection: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
+    marginLeft: 4,
+  },
+  menuCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  switchItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  switchLeft: {
     flex: 1,
   },
-  securityTitle: {
-    fontSize: 16,
+  switchTitle: {
+    fontSize: 14,
     fontWeight: '500',
-    color: '#1F2937',
+    color: '#374151',
     marginBottom: 2,
   },
-  securitySubtitle: {
-    fontSize: 13,
+  switchDescription: {
+    fontSize: 12,
     color: '#6B7280',
   },
   switch: {
-    marginLeft: 12,
-  },
-  switchTrack: {
     width: 44,
     height: 24,
-    backgroundColor: '#E5E7EB',
     borderRadius: 12,
-    padding: 2,
+    backgroundColor: '#D1D5DB',
     justifyContent: 'center',
+    paddingHorizontal: 2,
   },
-  switchTrackActive: {
+  switchActive: {
     backgroundColor: '#3B82F6',
   },
   switchThumb: {
     width: 20,
     height: 20,
-    backgroundColor: '#FFFFFF',
     borderRadius: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: '#FFFFFF',
+    alignSelf: 'flex-start',
   },
   switchThumbActive: {
-    transform: [{ translateX: 20 }],
+    alignSelf: 'flex-end',
   },
-  loginRecord: {
-    gap: 16,
-  },
-  loginItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  loginInfo: {
+  modalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
   },
-  loginDevice: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#1F2937',
-    marginBottom: 2,
-  },
-  loginTime: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  loginStatus: {
-    fontSize: 12,
-    color: '#10B981',
-    fontWeight: '500',
-  },
-  
-  // Modal样式
   modalContainer: {
-    flex: 1,
     backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  modalCloseButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderBottomColor: '#F3F4F6',
   },
   modalTitle: {
     fontSize: 18,
@@ -766,28 +545,23 @@ const styles = StyleSheet.create({
     color: '#1F2937',
   },
   modalContent: {
-    flex: 1,
     padding: 20,
   },
-  formContainer: {
-    gap: 20,
-  },
   inputGroup: {
-    gap: 8,
+    marginBottom: 20,
   },
   inputLabel: {
     fontSize: 14,
     fontWeight: '500',
     color: '#374151',
+    marginBottom: 8,
   },
-  textInput: {
+  input: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#D1D5DB',
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    padding: 12,
     fontSize: 16,
-    color: '#1F2937',
     backgroundColor: '#FFFFFF',
   },
   codeInputContainer: {
@@ -797,32 +571,32 @@ const styles = StyleSheet.create({
   codeInput: {
     flex: 1,
   },
-  codeButton: {
+  sendCodeButton: {
+    backgroundColor: '#3B82F6',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#3B82F6',
     borderRadius: 8,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  codeButtonDisabled: {
+  sendCodeButtonDisabled: {
     backgroundColor: '#9CA3AF',
   },
-  codeButtonText: {
+  sendCodeButtonText: {
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '500',
-    color: '#FFFFFF',
   },
   submitButton: {
     backgroundColor: '#3B82F6',
-    borderRadius: 8,
     paddingVertical: 16,
+    borderRadius: 8,
     alignItems: 'center',
     marginTop: 20,
   },
   submitButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

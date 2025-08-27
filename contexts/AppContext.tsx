@@ -4,8 +4,13 @@ import ApiService from '@/utils/ApiService';
 import EnhancedProblemCategoryService from '@/utils/EnhancedProblemCategoryService';
 import EnhancedNotificationService, { EnhancedMessage } from '@/utils/EnhancedNotificationService';
 
-// Supabase配置 - 实际使用时请替换为你的Supabase URL
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'http://localhost:54321';
+// Supabase配置 - 使用环境变量
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
+
+if (!SUPABASE_URL) {
+  console.error('错误: EXPO_PUBLIC_SUPABASE_URL 环境变量未设置');
+  throw new Error('EXPO_PUBLIC_SUPABASE_URL 环境变量是必需的');
+}
 
 export interface WorkOrder {
   id: string;
@@ -35,6 +40,15 @@ export interface ProcessResult {
   result: string;
   needFollowUp: boolean;
   followUpReason: string;
+}
+
+export interface UserInfo {
+  id: string;
+  username: string;
+  name: string;
+  email: string;
+  phone: string;
+  role?: string;
 }
 
 export interface UserSettings {
@@ -79,8 +93,13 @@ interface AppContextType {
   // 加载和错误状态
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+  isInitializing: boolean;
   error: Error | null;
   setError: (error: Error | null) => void;
+
+  // 用户信息
+  currentUser: UserInfo | null;
+  setCurrentUser: (user: UserInfo | null) => void;
 
   // 登录表单
   loginForm: { username: string; password: string };
@@ -131,6 +150,9 @@ interface AppContextType {
   submitReport: (reportData: any) => Promise<boolean>;
   updateWorkOrderStatus: (workOrderId: string, action: string, note?: string) => Promise<boolean>;
   
+  // 统计数据刷新
+  refreshUserStats: () => void;
+  
   // 仪表板统计数据
   dashboardStats: any;
   setDashboardStats: (stats: any) => void;
@@ -148,23 +170,28 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [loginForm, setLoginForm] = useState({
-    username: 'P001',
-    password: '123456',
+    username: '',
+    password: '',
   });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState<UserInfo | null>(null);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
   const [reportStep, setReportStep] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [workOrderFilter, setWorkOrderFilter] = useState('all');
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [dashboardStats, setDashboardStats] = useState<any>(null);
   
   // 通知和消息状态
   const [messages, setMessages] = useState<EnhancedMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  
+  // 统计数据刷新状态
+  const [statsRefreshTrigger, setStatsRefreshTrigger] = useState(0);
 
   // 默认设置
   const defaultSettings = useMemo(() => ({
@@ -224,69 +251,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     followUpReason: '',
   });
 
-  // 工单数据
-  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([
-    {
-      id: 'WO001',
-      title: '河道垃圾堆积问题',
-      location: '金沙江大桥下游200米',
-      status: '待接收',
-      priority: '紧急',
-      time: '2小时前',
-      type: 'M08001', // 河边环境-垃圾堆积
-      description: '河道内发现大量生活垃圾堆积，影响水质和环境卫生。',
-      reporter: '市民张三',
-      contact: '138****1234',
-    },
-    {
-      id: 'WO002',
-      title: '护栏损坏需要维修',
-      location: '滨江路段护栏',
-      status: '处理中',
-      priority: '普通',
-      time: '1天前',
-      type: 'M03001', // 河道护栏-损坏
-      description: '护栏部分损坏，存在安全隐患，需要及时维修。',
-      reporter: '巡查员李四',
-      contact: '139****5678',
-    },
-    {
-      id: 'WO003',
-      title: '河面漂浮垃圾清理',
-      location: '中山桥至解放桥段',
-      status: '待接收',
-      priority: '普通',
-      time: '3小时前',
-      type: 'M07001', // 河面环境-成片漂浮垃圾
-      description: '河面发现成片漂浮垃圾，主要为塑料袋、饮料瓶等生活垃圾。',
-      reporter: '环保志愿者王五',
-      contact: '186****9012',
-    },
-    {
-      id: 'WO004',
-      title: '绿化带树木枯死',
-      location: '滨河公园东段',
-      status: '已完成',
-      priority: '普通',
-      time: '2天前',
-      type: 'M02003', // 河道绿化-树木缺失、枯死
-      description: '绿化带内有多棵树木出现枯死现象，需要及时清理和补种。',
-      reporter: '公园管理员',
-      contact: '159****3456',
-    },
-    {
-      id: 'WO005',
-      title: '违章搭建临时建筑',
-      location: '河岸边停车场附近',
-      status: '待审核',
-      priority: '紧急',
-      time: '4小时前',
-      type: 'S01001', // 违法侵占河道-违章搭建
-      description: '发现有人在河道管理范围内违章搭建临时建筑，占用河道空间。',
-      reporter: '市民举报',
-      contact: '177****7890',
-    },
-  ]);
+  // 工单数据 - 初始为空，将从API获取
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
 
   // 离线操作方法
   const saveOfflineReport = useCallback(async (reportData: any): Promise<boolean> => {
@@ -356,8 +322,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       
       if (result.success && result.data) {
         setIsLoggedIn(true);
+        setCurrentUser(result.data.user); // 设置当前用户信息
         // 登录成功后初始化其他服务
-        await refreshDashboardStats();
+        await Promise.all([
+          loadWorkOrdersFromBackend(),
+          refreshDashboardStats()
+        ]);
         return true;
       } else {
         setError(new Error(result.message || '登录失败'));
@@ -377,12 +347,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       setError(null);
       
-      const result = await ApiService.getWorkOrders({
+      // 构建筛选参数，处理状态映射
+      const filterParams: any = {
         page: 1,
         size: 50,
-        status: workOrderFilter !== 'all' ? workOrderFilter : undefined,
         ...filters
-      });
+      };
+      
+      // 如果有状态筛选，需要转换为后端格式
+      if (workOrderFilter !== 'all') {
+        // 中文状态 -> 英文状态映射
+        const statusMapping: { [key: string]: string } = {
+          '待接收': 'pending',
+          '已分配': 'assigned', 
+          '处理中': 'processing',
+          '待审核': 'pending_review',
+          '已完成': 'completed',
+          '已取消': 'cancelled'
+        };
+        filterParams.status = statusMapping[workOrderFilter] || workOrderFilter;
+      }
+      
+      const result = await ApiService.getWorkOrders(filterParams);
       
       if (result.success && result.data) {
         setWorkOrders(result.data.items);
@@ -477,6 +463,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
               : order
           )
         );
+        
+        // 刷新统计数据
+        refreshUserStats();
+        
         return true;
       } else {
         throw new Error(result.message || '更新工单状态失败');
@@ -548,6 +538,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // 刷新用户统计数据
+  const refreshUserStats = useCallback(() => {
+    setStatsRefreshTrigger(prev => prev + 1);
+  }, []);
+
   // 在登录成功后加载消息
   useEffect(() => {
     if (isLoggedIn) {
@@ -565,7 +560,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initializeData = async () => {
       try {
-        setIsLoading(true);
+        setIsInitializing(true);
         
         // 初始化API服务
         ApiService.initialize(SUPABASE_URL);
@@ -581,6 +576,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const restored = await ApiService.restoreTokensFromStorage();
         if (restored) {
           setIsLoggedIn(true);
+          // 恢复用户信息
+          const userInfo = await ApiService.getCurrentUser();
+          if (userInfo) {
+            setCurrentUser(userInfo);
+          }
           // 如果已登录，加载数据
           await Promise.all([
             loadWorkOrdersFromBackend(),
@@ -607,7 +607,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         console.error('Initialize data error:', error);
         setError(error as Error);
       } finally {
-        setIsLoading(false);
+        setIsInitializing(false);
       }
     };
 
@@ -618,6 +618,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // 加载和错误状态
     isLoading,
     setIsLoading,
+    isInitializing,
     error,
     setError,
 
@@ -628,6 +629,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setShowPassword,
     isLoggedIn,
     setIsLoggedIn,
+
+    // 用户信息
+    currentUser,
+    setCurrentUser,
 
     // 工单相关
     workOrders,
@@ -670,6 +675,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     submitReport,
     updateWorkOrderStatus,
     
+    // 统计数据刷新
+    refreshUserStats,
+    statsRefreshTrigger,
+    
     // 仪表板统计数据
     dashboardStats,
     setDashboardStats,
@@ -682,13 +691,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     markMessageAsRead,
     syncMessages,
   }), [
-    isLoading, error, loginForm, showPassword, isLoggedIn,
+    isLoading, isInitializing, error, loginForm, showPassword, isLoggedIn, currentUser,
     workOrders, selectedWorkOrder, workOrderFilter,
     reportStep, selectedCategory, reportForm, processResult,
     userSettings, offlineStats, isOfflineMode,
     saveOfflineReport, syncOfflineData, clearOfflineData,
     loginWithBackend, loadWorkOrdersFromBackend, refreshDashboardStats,
     uploadFile, submitReport, updateWorkOrderStatus,
+    refreshUserStats, statsRefreshTrigger,
     dashboardStats, messages, unreadCount, getMessages, getUnreadMessages, markMessageAsRead, syncMessages
   ]);
 
