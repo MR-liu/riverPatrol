@@ -5,17 +5,16 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   TextInput,
   Alert,
   Image,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
 import { LoadingState } from '@/components/LoadingState';
+import { PageContainer } from '@/components/PageContainer';
 
 interface FeedbackType {
   id: string;
@@ -279,37 +278,9 @@ export default function FeedbackScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => {
-            if (title || content || selectedType) {
-              Alert.alert(
-                '放弃编辑',
-                '确定要放弃当前的反馈内容吗？',
-                [
-                  { text: '继续编辑', style: 'cancel' },
-                  { text: '放弃', onPress: () => router.back() },
-                ]
-              );
-            } else {
-              router.back();
-            }
-          }}
-        >
-          <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>意见反馈</Text>
-        <View style={styles.headerButton} />
-      </View>
-
-      <LinearGradient
-        colors={['#F8FAFC', '#EBF4FF', '#E0E7FF']}
-        style={styles.background}
-      >
-        <LoadingState isLoading={isLoading} loadingMessage="提交反馈中...">
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+    <PageContainer title="意见反馈">
+      <LoadingState isLoading={isLoading} loadingMessage="提交反馈中...">
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             {/* 反馈类型选择 */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>反馈类型</Text>
@@ -428,38 +399,11 @@ export default function FeedbackScreen() {
             <View style={styles.bottomSpacer} />
           </ScrollView>
         </LoadingState>
-      </LinearGradient>
-    </SafeAreaView>
-  );
-}
+      </PageContainer>
+    );
+  }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#3B82F6',
-  },
-  header: {
-    backgroundColor: '#3B82F6',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  background: {
-    flex: 1,
-  },
   content: {
     flex: 1,
     paddingHorizontal: 16,

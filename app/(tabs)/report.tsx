@@ -386,7 +386,7 @@ export default function ReportScreen() {
       <AppStatusBar {...StatusBarConfigs.transparent} />
       <LinearGradient
         colors={['#FAFBFF', '#F4F6FF', '#EEF2FF']}
-        style={[styles.background, { paddingTop: Math.max(insets.top, 20) }]}
+        style={[styles.background, { paddingTop: Math.max(insets.top + 10, 30) }]}
       >
         {renderStepIndicator()}
 

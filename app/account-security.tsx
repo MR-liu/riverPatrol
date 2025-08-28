@@ -5,16 +5,15 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   TextInput,
   Alert,
   Modal,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { LoadingState } from '@/components/LoadingState';
+import { PageContainer } from '@/components/PageContainer';
 import { useAppContext } from '@/contexts/AppContext';
 
 export default function AccountSecurityScreen() {
@@ -182,19 +181,7 @@ export default function AccountSecurityScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <LinearGradient colors={['#3B82F6', '#6366F1']} style={styles.header}>
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.title}>账户安全</Text>
-        </View>
-      </LinearGradient>
-
+    <PageContainer title="账户安全">
       <LoadingState isLoading={isLoading}>
         <ScrollView style={styles.content}>
           {/* 安全设置 */}
@@ -379,33 +366,12 @@ export default function AccountSecurityScreen() {
             <Text style={styles.submitButtonText}>确认修改</Text>
           </TouchableOpacity>
         </View>
-      )}
-    </SafeAreaView>
+      )}        
+    </PageContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  header: {
-    paddingTop: 20,
-    paddingBottom: 20,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  backButton: {
-    marginRight: 16,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
   content: {
     flex: 1,
     padding: 16,

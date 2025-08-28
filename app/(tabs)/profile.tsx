@@ -266,7 +266,7 @@ export default function ProfileScreen() {
           style={styles.content} 
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{
-            paddingTop: Math.max(insets.top, 20),
+            paddingTop: Math.max(insets.top + 10, 30),
             paddingBottom: insets.bottom + 20,
           }}
         >

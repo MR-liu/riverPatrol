@@ -223,46 +223,15 @@ export default function ProfileEditScreen() {
   const currentProfile = isEditing ? editedProfile : profile;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => {
-            if (isEditing) {
-              Alert.alert(
-                '放弃更改',
-                '确定要放弃当前的更改吗？',
-                [
-                  { text: '继续编辑', style: 'cancel' },
-                  { text: '放弃', onPress: () => router.back() },
-                ]
-              );
-            } else {
-              router.back();
-            }
-          }}
-        >
-          <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>个人资料</Text>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={isEditing ? handleCancelEdit : handleEditToggle}
-        >
-          <MaterialIcons 
-            name={isEditing ? "close" : "edit"} 
-            size={24} 
-            color="#FFFFFF" 
-          />
-        </TouchableOpacity>
-      </View>
-
-      <LinearGradient
-        colors={['#F8FAFC', '#EBF4FF', '#E0E7FF']}
-        style={styles.background}
-      >
-        <LoadingState isLoading={isLoading}>
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+    <PageContainer 
+      title="个人资料"
+      rightButton={{
+        icon: isEditing ? 'close' : 'edit',
+        onPress: isEditing ? handleCancelEdit : handleEditToggle
+      }}
+    >
+      <LoadingState isLoading={isLoading}>
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             {/* 头像区域 */}
             <View style={styles.avatarSection}>
               <TouchableOpacity
@@ -350,38 +319,11 @@ export default function ProfileEditScreen() {
             <View style={styles.bottomSpacer} />
           </ScrollView>
         </LoadingState>
-      </LinearGradient>
-    </SafeAreaView>
-  );
+      </PageContainer>
+    );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#3B82F6',
-  },
-  header: {
-    backgroundColor: '#3B82F6',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  background: {
-    flex: 1,
-  },
   content: {
     flex: 1,
     paddingHorizontal: 16,

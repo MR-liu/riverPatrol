@@ -35,6 +35,13 @@ export default function RootLayout() {
             <Stack.Screen name="settings" options={{ headerShown: false }} />
             <Stack.Screen name="enhanced-settings" options={{ headerShown: false }} />
             <Stack.Screen name="messages" options={{ headerShown: false }} />
+            <Stack.Screen name="privacy-settings" options={{ headerShown: false }} />
+            <Stack.Screen name="attendance" options={{ headerShown: false }} />
+            <Stack.Screen name="attendance-records" options={{ headerShown: false }} />
+            <Stack.Screen name="help-center" options={{ headerShown: false }} />
+            <Stack.Screen name="feedback" options={{ headerShown: false }} />
+            <Stack.Screen name="profile-edit" options={{ headerShown: false }} />
+            <Stack.Screen name="account-security" options={{ headerShown: false }} />
             <Stack.Screen name="+not-found" />
           </Stack>
           <StatusBar style="auto" />

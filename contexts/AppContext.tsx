@@ -354,6 +354,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...filters
       };
       
+      // 添加用户过滤：只获取当前用户创建的或分配给当前用户的工单
+      if (currentUser?.id) {
+        // 如果没有明确指定 assignee_id、creator_id 或 user_id，则查询与当前用户相关的所有工单
+        if (!filters.assignee_id && !filters.creator_id && !filters.user_id) {
+          filterParams.user_id = currentUser.id;
+        }
+      }
+      
       // 如果有状态筛选，需要转换为后端格式
       if (workOrderFilter !== 'all') {
         // 中文状态 -> 英文状态映射
@@ -381,7 +389,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [workOrderFilter]);
+  }, [workOrderFilter, currentUser]);
 
   const refreshDashboardStats = useCallback(async (): Promise<void> => {
     try {

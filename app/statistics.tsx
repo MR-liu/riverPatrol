@@ -7,12 +7,11 @@ import {
   StyleSheet,
   RefreshControl,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppContext } from '@/contexts/AppContext';
+import { PageContainer } from '@/components/PageContainer';
 import LocationService from '@/utils/LocationService';
 import AttendanceService from '@/utils/AttendanceService';
 import FileUploadService from '@/utils/FileUploadService';
@@ -252,30 +251,14 @@ export default function StatisticsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* 自定义头部 */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.back()}
-        >
-          <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>数据统计</Text>
-        <View style={styles.headerButton} />
-      </View>
-
-      <LinearGradient
-        colors={['#F8FAFC', '#EBF4FF', '#E0E7FF']}
-        style={styles.background}
+    <PageContainer title="数据统计">
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+        }
       >
-        <ScrollView 
-          style={styles.content} 
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
-          }
-        >
           {/* 总体概览 */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
@@ -372,38 +355,11 @@ export default function StatisticsScreen() {
             </View>
           </View>
         </ScrollView>
-      </LinearGradient>
-    </SafeAreaView>
-  );
+      </PageContainer>
+    );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#3B82F6',
-  },
-  header: {
-    backgroundColor: '#3B82F6',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  background: {
-    flex: 1,
-  },
   content: {
     flex: 1,
     paddingHorizontal: 16,

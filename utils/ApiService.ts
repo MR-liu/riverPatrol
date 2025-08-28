@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import DataAdapterService, { BackendWorkOrder, BackendDashboardStats } from './DataAdapterService';
 import { WorkOrder } from '@/contexts/AppContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import DataAdapterService, { BackendDashboardStats, BackendWorkOrder } from './DataAdapterService';
 import { getAuthHeaders } from './SupabaseConfig';
 
 /**
@@ -48,18 +48,32 @@ class ApiService {
   ): Promise<{ success: boolean; data?: T; message?: string; error?: string }> {
     try {
       const url = `${this.baseUrl}${endpoint}`;
+      const headers = {
+        ...this.getAuthHeaders(),
+        ...options.headers,
+      };
+      
+      // 添加调试日志
+      console.log(`[ApiService] 请求 ${endpoint}:`, {
+        url,
+        method: options.method || 'GET',
+        hasAccessToken: !!this.accessToken,
+        accessTokenPrefix: this.accessToken ? this.accessToken.substring(0, 20) + '...' : 'none'
+      });
       
       const response = await fetch(url, {
         ...options,
-        headers: {
-          ...this.getAuthHeaders(),
-          ...options.headers,
-        },
+        headers,
       });
 
       const result = await response.json();
       
       if (!response.ok) {
+        console.error(`[ApiService] HTTP错误 ${endpoint}:`, {
+          status: response.status,
+          statusText: response.statusText,
+          result
+        });
         throw new Error(result.message || `请求失败: ${response.status}`);
       }
 
@@ -443,6 +457,37 @@ class ApiService {
       message: errorData.message,
       shouldLogout
     };
+  }
+
+  // ==================== 消息同步 ====================
+
+  /**
+   * 同步用户消息
+   */
+  static async syncMessages(params: {
+    user_id: string;
+    device_id?: string;
+    last_sync?: string;
+  }): Promise<{
+    success: boolean;
+    data?: {
+      messages: any[];
+      unread_count: number;
+      sync_timestamp: string;
+    };
+    message?: string;
+    error?: string;
+  }> {
+    const result = await this.request<{
+      messages: any[];
+      unread_count: number;
+      sync_timestamp: string;
+    }>('/sync-messages', {
+      method: 'POST',
+      body: JSON.stringify(params)
+    });
+
+    return result;
   }
 }
 

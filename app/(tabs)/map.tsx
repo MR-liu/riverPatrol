@@ -246,7 +246,7 @@ export default function MapScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <AppStatusBar {...StatusBarConfigs.transparent} />
-      <View style={[styles.content, { paddingTop: Math.max(insets.top, 20) }]}>
+      <View style={[styles.content, { paddingTop: Math.max(insets.top + 10, 30) }]}>
         {/* 地图 */}
         {Platform.OS === 'web' ? renderWebMap() : renderNativeMap()}
 

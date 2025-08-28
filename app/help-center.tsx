@@ -5,13 +5,13 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   Linking,
   Alert,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+
+import { PageContainer } from '@/components/PageContainer';
 
 interface FAQItem {
   id: string;
@@ -244,28 +244,14 @@ export default function HelpCenterScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.back()}
-        >
-          <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>帮助中心</Text>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.push('/search-help')}
-        >
-          <MaterialIcons name="search" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-
-      <LinearGradient
-        colors={['#F8FAFC', '#EBF4FF', '#E0E7FF']}
-        style={styles.background}
-      >
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+    <PageContainer
+      title="帮助中心"
+      rightButton={{
+        icon: 'search',
+        onPress: () => router.push('/search-help')
+      }}
+    >
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* 快捷帮助 */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
@@ -339,38 +325,11 @@ export default function HelpCenterScreen() {
             </Text>
           </View>
         </ScrollView>
-      </LinearGradient>
-    </SafeAreaView>
-  );
+      </PageContainer>
+    );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#3B82F6',
-  },
-  header: {
-    backgroundColor: '#3B82F6',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  background: {
-    flex: 1,
-  },
   content: {
     flex: 1,
     paddingHorizontal: 16,

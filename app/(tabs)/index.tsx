@@ -151,7 +151,7 @@ export default function DashboardScreen() {
         {/* 现代化渐变背景头部 */}
         <LinearGradient
           colors={['#f8fafc', '#e2e8f0', '#cbd5e1']}
-          style={[styles.backgroundGradient, { paddingTop: insets.top + 10 }]}
+          style={[styles.backgroundGradient, { paddingTop: insets.top + 20 }]}
           start={{x: 0, y: 0}}
           end={{x: 1, y: 1}}
         >

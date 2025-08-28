@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert } from 'react-native';
-import Constants from 'expo-constants';
 import { createClient, RealtimeChannel } from '@supabase/supabase-js';
+import Constants from 'expo-constants';
+import { Alert } from 'react-native';
 import ApiService from './ApiService';
 
 // 检查是否在 Expo Go 中运行
@@ -358,13 +358,10 @@ class EnhancedNotificationService {
 
       const lastSync = await AsyncStorage.getItem(this.STORAGE_KEYS.LAST_SYNC);
       
-      const result = await ApiService.request('/sync-messages', {
-        method: 'POST',
-        body: JSON.stringify({
-          user_id: userId,
-          device_id: this.deviceId,
-          last_sync: lastSync,
-        }),
+      const result = await ApiService.syncMessages({
+        user_id: userId,
+        device_id: this.deviceId,
+        last_sync: lastSync,
       });
 
       if (result.success && result.data) {

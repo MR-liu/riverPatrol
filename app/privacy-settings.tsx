@@ -5,14 +5,13 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   Alert,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { LoadingState } from '@/components/LoadingState';
+import { PageContainer } from '@/components/PageContainer';
 
 interface PrivacySetting {
   key: string;
@@ -340,24 +339,9 @@ export default function PrivacySettingsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.back()}
-        >
-          <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>隐私设置</Text>
-        <View style={styles.headerButton} />
-      </View>
-
-      <LinearGradient
-        colors={['#F8FAFC', '#EBF4FF', '#E0E7FF']}
-        style={styles.background}
-      >
-        <LoadingState isLoading={isLoading}>
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+    <PageContainer title="隐私设置">
+      <LoadingState isLoading={isLoading}>
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             {/* 权限管理 */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
@@ -460,38 +444,11 @@ export default function PrivacySettingsScreen() {
             </View>
           </ScrollView>
         </LoadingState>
-      </LinearGradient>
-    </SafeAreaView>
-  );
+      </PageContainer>
+    );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#3B82F6',
-  },
-  header: {
-    backgroundColor: '#3B82F6',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  background: {
-    flex: 1,
-  },
   content: {
     flex: 1,
     paddingHorizontal: 16,

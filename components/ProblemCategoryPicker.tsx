@@ -6,8 +6,9 @@ import {
   Modal,
   StyleSheet,
   ScrollView,
+  StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -28,6 +29,8 @@ export const ProblemCategoryPicker: React.FC<ProblemCategoryPickerProps> = ({
   selectedCategoryId,
   title = '选择问题分类',
 }) => {
+  const insets = useSafeAreaInsets();
+  console.log('SafeArea insets:', insets); // Debug log
   const [currentLevel, setCurrentLevel] = useState<1 | 2 | 3>(1);
   const [selectedMainId, setSelectedMainId] = useState<string>('');
   const [selectedSubId, setSelectedSubId] = useState<string>('');
@@ -178,12 +181,13 @@ export const ProblemCategoryPicker: React.FC<ProblemCategoryPickerProps> = ({
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="pageSheet"
+      presentationStyle="fullScreen"
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="light-content" backgroundColor="#3B82F6" translucent={false} />
+      <View style={styles.container}>
         {/* 头部 */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 8, paddingBottom: 12 }]}>
           <TouchableOpacity style={styles.headerButton} onPress={handleBackPress}>
             <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
@@ -214,7 +218,7 @@ export const ProblemCategoryPicker: React.FC<ProblemCategoryPickerProps> = ({
             </Text>
           </View>
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 };
@@ -230,7 +234,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
   },
   headerButton: {
     width: 40,
