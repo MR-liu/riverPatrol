@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import ApiService from '@/utils/ApiService';
-import EnhancedProblemCategoryService from '@/utils/EnhancedProblemCategoryService';
+import OptimizedApiService from '@/utils/OptimizedApiService';
+import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
 import EnhancedNotificationService, { EnhancedMessage } from '@/utils/EnhancedNotificationService';
 
 // Supabase配置 - 使用环境变量
@@ -318,7 +318,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       setError(null);
       
-      const result = await ApiService.login(username, password);
+      const result = await OptimizedApiService.login(username, password);
       
       if (result.success && result.data) {
         setIsLoggedIn(true);
@@ -376,7 +376,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         filterParams.status = statusMapping[workOrderFilter] || workOrderFilter;
       }
       
-      const result = await ApiService.getWorkOrders(filterParams);
+      const result = await OptimizedApiService.getWorkOrders(filterParams);
       
       if (result.success && result.data) {
         setWorkOrders(result.data.items);
@@ -393,7 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refreshDashboardStats = useCallback(async (): Promise<void> => {
     try {
-      const result = await ApiService.getDashboardStats();
+      const result = await OptimizedApiService.getDashboardStats();
       
       if (result.success && result.data) {
         setDashboardStats(result.data);
@@ -409,7 +409,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true);
       
-      const result = await ApiService.uploadFile(file, type as any, relatedId);
+      const result = await OptimizedApiService.uploadFile(file, type as any, relatedId);
       
       if (result.success && result.data) {
         return result.data.file_url;
@@ -460,7 +460,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       setError(null);
       
-      const result = await ApiService.updateWorkOrderStatus(workOrderId, action as any, note);
+      const result = await OptimizedApiService.updateWorkOrderStatus(workOrderId, action as any, note);
       
       if (result.success) {
         // 更新本地工单状态
@@ -570,30 +570,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         setIsInitializing(true);
         
-        // 初始化API服务
-        ApiService.initialize(SUPABASE_URL);
+        OptimizedApiService.initialize(SUPABASE_URL);
         
         // 初始化问题分类服务
-        await EnhancedProblemCategoryService.initialize(SUPABASE_URL);
+        await SimpleProblemCategoryService.initialize();
         
         // 初始化通知服务
         const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
         await EnhancedNotificationService.initialize(SUPABASE_URL, SUPABASE_ANON_KEY);
         
         // 尝试恢复登录状态
-        const restored = await ApiService.restoreTokensFromStorage();
+        const restored = await OptimizedApiService.restoreTokensFromStorage();
         if (restored) {
+          console.log('[AppContext] Token恢复成功，设置登录状态');
           setIsLoggedIn(true);
           // 恢复用户信息
-          const userInfo = await ApiService.getCurrentUser();
+          const userInfo = await OptimizedApiService.getCurrentUser();
           if (userInfo) {
             setCurrentUser(userInfo);
           }
           // 如果已登录，加载数据
-          await Promise.all([
-            loadWorkOrdersFromBackend(),
-            refreshDashboardStats()
-          ]);
+          try {
+            await Promise.all([
+              loadWorkOrdersFromBackend(),
+              refreshDashboardStats()
+            ]);
+          } catch (error) {
+            console.warn('[AppContext] 加载初始数据失败，但不影响登录状态:', error);
+          }
+        } else {
+          console.log('[AppContext] Token恢复失败，保持未登录状态');
+          setIsLoggedIn(false);
+          setCurrentUser(null);
         }
         
         // 加载用户设置

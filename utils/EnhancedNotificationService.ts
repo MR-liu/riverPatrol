@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, RealtimeChannel } from '@supabase/supabase-js';
 import Constants from 'expo-constants';
 import { Alert } from 'react-native';
-import ApiService from './ApiService';
+import OptimizedApiService from './OptimizedApiService';
 
 // 检查是否在 Expo Go 中运行
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
@@ -261,7 +261,7 @@ class EnhancedNotificationService {
         .from('mobile_devices')
         .upsert({
           device_id: this.deviceId,
-          user_id: ApiService.getCurrentUserId(), // 从ApiService获取当前用户ID
+          user_id: OptimizedApiService.getCurrentUserId(), // 从OptimizedApiService获取当前用户ID
           push_token: token,
           device_name: Constants.deviceName || 'Unknown Device',
           os_version: Constants.platform?.ios ? `iOS ${Constants.platform.ios.systemVersion}` : `Android ${Constants.platform?.android?.osVersion}`,
@@ -285,7 +285,7 @@ class EnhancedNotificationService {
     try {
       if (!this.supabaseClient) return;
 
-      const userId = ApiService.getCurrentUserId();
+      const userId = OptimizedApiService.getCurrentUserId();
       if (!userId) return;
 
       // 订阅用户消息表的变化
@@ -353,12 +353,12 @@ class EnhancedNotificationService {
     try {
       if (!this.supabaseClient) return false;
 
-      const userId = ApiService.getCurrentUserId();
+      const userId = OptimizedApiService.getCurrentUserId();
       if (!userId) return false;
 
       const lastSync = await AsyncStorage.getItem(this.STORAGE_KEYS.LAST_SYNC);
       
-      const result = await ApiService.syncMessages({
+      const result = await OptimizedApiService.syncMessages({
         user_id: userId,
         device_id: this.deviceId,
         last_sync: lastSync,
@@ -476,11 +476,11 @@ class EnhancedNotificationService {
   // 标记消息为已读
   async markAsRead(messageIds: string[]): Promise<boolean> {
     try {
-      const userId = ApiService.getCurrentUserId();
+      const userId = OptimizedApiService.getCurrentUserId();
       if (!userId) return false;
 
       // 更新服务器
-      const result = await ApiService.request('/mark-messages-read', {
+      const result = await OptimizedApiService.request('/mark-messages-read', {
         method: 'POST',
         body: JSON.stringify({
           message_ids: messageIds,

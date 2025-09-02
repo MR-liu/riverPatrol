@@ -15,7 +15,7 @@ import { AppStatusBar, StatusBarConfigs } from '@/components/AppStatusBar';
 
 import { useAppContext } from '@/contexts/AppContext';
 import AttendanceService from '@/utils/AttendanceService';
-import ApiService from '@/utils/ApiService';
+import OptimizedApiService from '@/utils/OptimizedApiService';
 
 export default function ProfileScreen() {
   const { setIsLoggedIn, currentUser, workOrders, statsRefreshTrigger } = useAppContext();

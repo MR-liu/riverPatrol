@@ -9,7 +9,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 
 import ProblemCategoryPicker from '@/components/ProblemCategoryPicker';
-import EnhancedProblemCategoryService from '@/utils/EnhancedProblemCategoryService';
+import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
 
 interface CategorySelectorProps {
   selectedCategoryId?: string;
@@ -41,7 +41,7 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
 
   const getDisplaySubText = () => {
     if (selectedCategoryId) {
-      const fullPath = EnhancedProblemCategoryService.getCategoryFullName(selectedCategoryId);
+      const fullPath = SimpleProblemCategoryService.getCategoryFullName(selectedCategoryId);
       return fullPath;
     }
     return null;

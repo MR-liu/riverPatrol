@@ -14,7 +14,21 @@
       "Bash(lsof:*)",
       "Bash(pkill:*)",
       "Bash(kill 36237)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(chmod +x test-auth-optimization.sh)",
+      "Bash(./test-auth-optimization.sh)",
+      "Bash(chmod +x test-unified-permissions.sh)",
+      "Bash(./test-unified-permissions.sh)",
+      "Bash(curl -s -X GET \"http://127.0.0.1:54321/functions/v1/get-permission-config?type=roles\" -H \"Content-Type: application/json\")",
+      "Bash(curl -s http://127.0.0.1:54321/health)",
+      "Bash(curl -s http://127.0.0.1:54321/functions/v1/)",
+      "Bash(curl -s -X POST \"http://127.0.0.1:54321/functions/v1/custom-login\" )",
+      "Bash(curl -s -X GET \"http://127.0.0.1:54321/functions/v1/get-dashboard-stats\" -H \"Content-Type: application/json\")",
+      "Bash(deno check /Users/liuzejin/chengyi/project/smart-river-patrol/RiverPatrol/supabase/functions/_shared/unified-permissions.ts)",
+      "WebSearch",
+      "WebFetch(domain:supabase.com)",
+      "Bash(curl -s -X POST \"http://127.0.0.1:54321/functions/v1/custom-login\" )",
+      "Bash(curl -s -X POST \"http://127.0.0.1:54321/functions/v1/custom-login\" )"
     ],
     "deny": [],
     "ask": []

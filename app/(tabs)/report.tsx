@@ -17,7 +17,7 @@ import { AppStatusBar, StatusBarConfigs } from '@/components/AppStatusBar';
 import { useAppContext } from '@/contexts/AppContext';
 import PhotoPicker from '@/components/PhotoPicker';
 import CategorySelector from '@/components/CategorySelector';
-import EnhancedProblemCategoryService from '@/utils/EnhancedProblemCategoryService';
+import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
 
 export default function ReportScreen() {
   const {
@@ -169,7 +169,7 @@ export default function ReportScreen() {
         <View style={styles.selectedInfo}>
           <MaterialIcons name="check-circle" size={18} color="#10B981" />
           <Text style={styles.selectedText}>
-            {EnhancedProblemCategoryService.getCategoryFullName(selectedCategoryId) || selectedCategoryName}
+            {SimpleProblemCategoryService.getCategoryFullName(selectedCategoryId) || selectedCategoryName}
           </Text>
         </View>
       )}

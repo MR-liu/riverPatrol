@@ -17,10 +17,17 @@ import { router } from 'expo-router';
 
 import { useAppContext } from '@/contexts/AppContext';
 import { LoadingState } from '@/components/LoadingState';
+import WorkOrderApiService from '@/utils/WorkOrderApiService';
+import PermissionService from '@/utils/PermissionService';
 
 export default function EnhancedWorkOrderDetailScreen() {
-  const { selectedWorkOrder, setSelectedWorkOrder, workOrders, setWorkOrders } = useAppContext();
+  const { selectedWorkOrder, setSelectedWorkOrder, workOrders, setWorkOrders, currentUser } = useAppContext();
   const [isLoading, setIsLoading] = useState(false);
+  const [assignModalVisible, setAssignModalVisible] = useState(false);
+  
+  // 获取用户角色和权限
+  const userRole = currentUser?.role;
+  const permissions = PermissionService.getWorkOrderPermissions(selectedWorkOrder, currentUser, userRole);
 
   if (!selectedWorkOrder) {
     return (
@@ -38,34 +45,29 @@ export default function EnhancedWorkOrderDetailScreen() {
     );
   }
 
+  // 接收工单
   const handleAcceptOrder = async () => {
-    if (!selectedWorkOrder) return;
+    if (!selectedWorkOrder || !permissions.canAccept) return;
 
     Alert.alert(
       '确认接收工单',
-      '接收后将开始巡视轨迹记录，您确定要接收这个工单吗？',
+      '接收后将开始处理，您确定要接收这个工单吗？',
       [
-        {
-          text: '取消',
-          style: 'cancel',
-        },
+        { text: '取消', style: 'cancel' },
         {
           text: '确认接收',
           onPress: async () => {
             setIsLoading(true);
             try {
-              const updatedWorkOrder = {
-                ...selectedWorkOrder,
-                status: '处理中',
-              };
-
-              const updatedWorkOrders = workOrders.map(order =>
-                order.id === selectedWorkOrder.id ? updatedWorkOrder : order
+              const response = await WorkOrderApiService.acceptWorkOrder(
+                selectedWorkOrder.id,
+                '工单已接收，准备前往现场处理'
               );
-              setWorkOrders(updatedWorkOrders);
-              setSelectedWorkOrder(updatedWorkOrder);
 
-              Alert.alert('接收成功', '工单已接收，请前往现场处理问题。');
+              if (response.success) {
+                await refreshWorkOrder(response.data?.new_status);
+                Alert.alert('接收成功', '工单已接收，请前往现场处理问题。');
+              }
             } catch (error) {
               console.error('Accept order error:', error);
               Alert.alert('操作失败', '接收工单时发生错误，请重试');
@@ -78,28 +80,187 @@ export default function EnhancedWorkOrderDetailScreen() {
     );
   };
 
+  // 开始处理工单
+  const handleStartOrder = async () => {
+    if (!selectedWorkOrder || !permissions.canStart) return;
+
+    Alert.alert(
+      '开始处理工单',
+      '确认开始处理这个工单吗？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '开始处理',
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              const response = await WorkOrderApiService.startWorkOrder(
+                selectedWorkOrder.id,
+                undefined, // location info
+                '开始现场处理'
+              );
+
+              if (response.success) {
+                await refreshWorkOrder(response.data?.new_status);
+                Alert.alert('操作成功', '已开始处理工单');
+              }
+            } catch (error) {
+              console.error('Start order error:', error);
+              Alert.alert('操作失败', '开始处理工单时发生错误，请重试');
+            } finally {
+              setIsLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // 取消工单
+  const handleCancelOrder = async () => {
+    if (!selectedWorkOrder || !permissions.canCancel) return;
+
+    Alert.alert(
+      '取消工单',
+      '确认取消这个工单吗？取消后无法恢复。',
+      [
+        { text: '不取消', style: 'cancel' },
+        {
+          text: '确认取消',
+          style: 'destructive',
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              const response = await WorkOrderApiService.cancelWorkOrder(
+                selectedWorkOrder.id,
+                '管理员取消工单'
+              );
+
+              if (response.success) {
+                await refreshWorkOrder(response.data?.new_status);
+                Alert.alert('操作成功', '工单已取消');
+              }
+            } catch (error) {
+              console.error('Cancel order error:', error);
+              Alert.alert('操作失败', '取消工单时发生错误，请重试');
+            } finally {
+              setIsLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // 刷新工单状态
+  const refreshWorkOrder = async (newStatus?: string) => {
+    if (!selectedWorkOrder) return;
+
+    // 更新本地状态 - 使用正确的状态映射
+    const statusMap: { [key: string]: string } = {
+      'pending': '待分配',
+      'assigned': '已分配',
+      'accepted': '待接收', 
+      'processing': '处理中',
+      'pending_review': '待审核',
+      'completed': '已完成',
+      'cancelled': '已取消',
+    };
+
+    const updatedWorkOrder = {
+      ...selectedWorkOrder,
+      status: newStatus ? statusMap[newStatus] || newStatus : selectedWorkOrder.status,
+      updated_at: new Date().toISOString(),
+    };
+
+    const updatedWorkOrders = workOrders.map(order =>
+      order.id === selectedWorkOrder.id ? updatedWorkOrder : order
+    );
+    
+    setWorkOrders(updatedWorkOrders);
+    setSelectedWorkOrder(updatedWorkOrder);
+  };
+
   const handleProcessResult = () => {
     router.push('/process-result');
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case '紧急': return '#EF4444';
-      case '高': return '#F59E0B';
-      case '一般': return '#3B82F6';
-      case '低': return '#10B981';
-      default: return '#6B7280';
+  // 渲染操作按钮
+  const renderActionButtons = () => {
+    if (!permissions.canView) return null;
+
+    const buttons: JSX.Element[] = [];
+
+    if (permissions.canAccept) {
+      buttons.push(
+        <TouchableOpacity
+          key="accept"
+          style={[styles.actionButton, { backgroundColor: '#10B981' }]}
+          onPress={handleAcceptOrder}
+        >
+          <MaterialIcons name="check-circle" size={20} color="white" />
+          <Text style={styles.actionButtonText}>接收工单</Text>
+        </TouchableOpacity>
+      );
     }
+
+    if (permissions.canStart) {
+      buttons.push(
+        <TouchableOpacity
+          key="start"
+          style={[styles.actionButton, { backgroundColor: '#8B5CF6' }]}
+          onPress={handleStartOrder}
+        >
+          <MaterialIcons name="play-arrow" size={20} color="white" />
+          <Text style={styles.actionButtonText}>开始处理</Text>
+        </TouchableOpacity>
+      );
+    }
+
+    if (permissions.canComplete) {
+      buttons.push(
+        <TouchableOpacity
+          key="complete"
+          style={[styles.actionButton, { backgroundColor: '#059669' }]}
+          onPress={handleProcessResult}
+        >
+          <MaterialIcons name="done" size={20} color="white" />
+          <Text style={styles.actionButtonText}>处理结果</Text>
+        </TouchableOpacity>
+      );
+    }
+
+    if (permissions.canCancel) {
+      buttons.push(
+        <TouchableOpacity
+          key="cancel"
+          style={[styles.actionButton, { backgroundColor: '#EF4444' }]}
+          onPress={handleCancelOrder}
+        >
+          <MaterialIcons name="cancel" size={20} color="white" />
+          <Text style={styles.actionButtonText}>取消工单</Text>
+        </TouchableOpacity>
+      );
+    }
+
+    if (buttons.length === 0) return null;
+
+    return (
+      <View style={styles.actionButtonsContainer}>
+        <View style={styles.actionButtonsGrid}>
+          {buttons}
+        </View>
+      </View>
+    );
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case '待接收': return '#F59E0B';
-      case '处理中': return '#3B82F6';
-      case '已完成': return '#10B981';
-      case '已关闭': return '#6B7280';
-      default: return '#6B7280';
-    }
+  // 使用 PermissionService 的格式化方法
+  const getPriorityDisplay = (priority: string) => {
+    return PermissionService.formatPriority(priority);
+  };
+
+  const getStatusDisplay = (status: string) => {
+    return PermissionService.formatStatus(status);
   };
 
   return (
@@ -128,10 +289,10 @@ export default function EnhancedWorkOrderDetailScreen() {
                 <View
                   style={[
                     styles.statusBadge,
-                    { backgroundColor: getStatusColor(selectedWorkOrder.status) },
+                    { backgroundColor: getStatusDisplay(selectedWorkOrder.status).color },
                   ]}
                 >
-                  <Text style={styles.statusText}>{selectedWorkOrder.status}</Text>
+                  <Text style={styles.statusText}>{getStatusDisplay(selectedWorkOrder.status).text}</Text>
                 </View>
               </View>
 
@@ -160,10 +321,10 @@ export default function EnhancedWorkOrderDetailScreen() {
                       <View
                         style={[
                           styles.priorityBadge,
-                          { backgroundColor: getPriorityColor(selectedWorkOrder.priority) },
+                          { backgroundColor: getPriorityDisplay(selectedWorkOrder.priority).color },
                         ]}
                       >
-                        <Text style={styles.priorityText}>{selectedWorkOrder.priority}</Text>
+                        <Text style={styles.priorityText}>{getPriorityDisplay(selectedWorkOrder.priority).text}</Text>
                       </View>
                     </View>
                   </View>
@@ -222,51 +383,8 @@ export default function EnhancedWorkOrderDetailScreen() {
           </ScrollView>
         </LoadingState>
 
-        {/* 底部操作按钮 */}
-        <View style={styles.actionBar}>
-          {selectedWorkOrder.status === '待接收' && (
-            <>
-              <TouchableOpacity style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>转派</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.primaryButton} onPress={handleAcceptOrder}>
-                <LinearGradient
-                  colors={['#3B82F6', '#1E40AF']}
-                  style={styles.primaryButtonGradient}
-                >
-                  <Text style={styles.primaryButtonText}>接收工单</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </>
-          )}
-          
-          {selectedWorkOrder.status === '处理中' && (
-            <>
-              <TouchableOpacity style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>转派</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.primaryButton} onPress={handleProcessResult}>
-                <LinearGradient
-                  colors={['#10B981', '#059669']}
-                  style={styles.primaryButtonGradient}
-                >
-                  <Text style={styles.primaryButtonText}>上传结果</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </>
-          )}
-          
-          {(selectedWorkOrder.status === '已完成' || selectedWorkOrder.status === '待审核') && (
-            <TouchableOpacity style={[styles.primaryButton, { flex: 1 }]} onPress={() => router.back()}>
-              <LinearGradient
-                colors={['#6B7280', '#4B5563']}
-                style={styles.primaryButtonGradient}
-              >
-                <Text style={styles.primaryButtonText}>返回列表</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-        </View>
+        {/* 权限控制的操作按钮 */}
+        {renderActionButtons()}
       </LinearGradient>
     </SafeAreaView>
   );
@@ -431,6 +549,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
+  },
+  // 新的操作按钮样式
+  actionButtonsContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  actionButtonsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 16,
+    gap: 12,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 8,
+    minWidth: 120,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   backButtonText: {
     color: '#FFFFFF',

@@ -13,14 +13,14 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAppContext } from '@/contexts/AppContext';
 import PhotoPicker from '@/components/PhotoPicker';
 import LocationService from '@/utils/LocationService';
+import WorkOrderApiService from '@/utils/WorkOrderApiService';
 
 export default function ProcessResultScreen() {
-  const { selectedWorkOrder, setSelectedWorkOrder, workOrders, setWorkOrders, processResult, setProcessResult } = useAppContext();
+  const { selectedWorkOrder, setSelectedWorkOrder, workOrders, setWorkOrders } = useAppContext();
   const [processMethod, setProcessMethod] = useState('');
   const [processDescription, setProcessDescription] = useState('');
   const [result, setResult] = useState('');
@@ -28,6 +28,7 @@ export default function ProcessResultScreen() {
   const [followUpReason, setFollowUpReason] = useState('');
   const [beforePhotos, setBeforePhotos] = useState<string[]>([]);
   const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
     if (!processMethod.trim() || !processDescription.trim() || !result.trim()) {
@@ -46,32 +47,61 @@ export default function ProcessResultScreen() {
     }
 
     try {
-      // 结束GPS轨迹记录
-      const completedTrack = await LocationService.stopPatrolTrack(`工单${selectedWorkOrder?.id}处理完成`);
+      setIsSubmitting(true);
       
-      // 构建处理结果数据
-      const resultData = {
-        beforePhotos,
-        afterPhotos,
-        processMethod,
-        processDescription,
-        result,
-        needFollowUp,
-        followUpReason,
-        completedTrack,
-        completedAt: new Date().toISOString(),
-        processDuration: completedTrack?.totalDuration || 0,
-        travelDistance: completedTrack?.totalDistance || 0,
+      if (!selectedWorkOrder) {
+        Alert.alert('错误', '未找到工单信息');
+        return;
+      }
+
+      // 停止轨迹记录
+      const completedTrack = await LocationService.stopPatrolTrack(`工单${selectedWorkOrder.id}处理完成`);
+
+      // 上传照片到服务器
+      Alert.alert('上传中', '正在上传照片，请稍候...');
+      
+      const uploadedBeforePhotos = await WorkOrderApiService.uploadMultiplePhotos(
+        beforePhotos.map(uri => ({ uri, name: 'before.jpg', type: 'image/jpeg' })),
+        selectedWorkOrder.id,
+        'result_photo'
+      );
+
+      const uploadedAfterPhotos = await WorkOrderApiService.uploadMultiplePhotos(
+        afterPhotos.map(uri => ({ uri, name: 'after.jpg', type: 'image/jpeg' })),
+        selectedWorkOrder.id,
+        'result_photo'
+      );
+
+      // 获取当前位置信息
+      const locationInfo = await LocationService.getCurrentLocation();
+
+      // 提交处理结果到服务器
+      Alert.alert('提交中', '正在保存处理结果到服务器...');
+      
+      const submitData = {
+        workorder_id: selectedWorkOrder.id,
+        process_method: processMethod,
+        process_result: `${result}${needFollowUp ? ' (需要跟进: ' + followUpReason + ')' : ''}`,
+        before_photos: uploadedBeforePhotos,
+        after_photos: uploadedAfterPhotos,
+        need_followup: needFollowUp,
+        followup_reason: needFollowUp ? followUpReason : undefined,
+        location_info: locationInfo ? {
+          latitude: locationInfo.latitude,
+          longitude: locationInfo.longitude,
+          address: locationInfo.address,
+        } : undefined,
       };
 
-      // 保存到context
-      setProcessResult(resultData);
+      const response = await WorkOrderApiService.submitWorkOrderResult(submitData);
 
-      // 更新工单状态
-      if (selectedWorkOrder) {
+      if (response.success) {
+        // 更新本地工单状态
+        const newStatus = needFollowUp ? '待审核' : '已完成';
         const updatedWorkOrder = {
           ...selectedWorkOrder,
-          status: needFollowUp ? '待审核' : '已完成',
+          status: newStatus,
+          updated_at: new Date().toISOString(),
         };
 
         const updatedWorkOrders = workOrders.map(order =>
@@ -79,29 +109,26 @@ export default function ProcessResultScreen() {
         );
         setWorkOrders(updatedWorkOrders);
         setSelectedWorkOrder(updatedWorkOrder);
-      }
 
-      // 保存处理结果到本地存储
-      await saveProcessResult(resultData);
-
-      Alert.alert(
-        '提交成功',
-        `处理结果已提交${needFollowUp ? '，等待审核' : '，工单已完成'}${completedTrack ? `\n\n巡视统计:\n距离: ${LocationService.formatDistance(completedTrack.totalDistance)}\n用时: ${LocationService.formatDuration(completedTrack.totalDuration)}` : ''}`,
-        [
-          {
-            text: '确定',
-            onPress: () => {
-              // 重置表单
-              resetForm();
-              // 返回工单列表
-              router.push('/(tabs)/workorders');
+        Alert.alert(
+          '提交成功', 
+          `处理结果已保存到数据库${needFollowUp ? '，等待审核' : '，工单已完成'}${completedTrack ? `\n\n巡视统计:\n距离: ${LocationService.formatDistance(completedTrack.totalDistance)}\n用时: ${LocationService.formatDuration(completedTrack.totalDuration)}` : ''}`,
+          [
+            {
+              text: '确定',
+              onPress: () => {
+                resetForm();
+                router.push('/(tabs)/workorders');
+              },
             },
-          },
-        ]
-      );
+          ]
+        );
+      }
     } catch (error) {
       console.error('Submit process result error:', error);
-      Alert.alert('提交失败', '处理结果提交时发生错误，请重试');
+      Alert.alert('提交失败', '处理结果提交时发生错误，请检查网络连接后重试');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -115,24 +142,6 @@ export default function ProcessResultScreen() {
     setAfterPhotos([]);
   };
 
-  const saveProcessResult = async (resultData: any) => {
-    try {
-      const existingResults = await AsyncStorage.getItem('processResults');
-      const results = existingResults ? JSON.parse(existingResults) : [];
-      
-      results.push({
-        id: `result_${Date.now()}`,
-        workOrderId: selectedWorkOrder?.id,
-        workOrderTitle: selectedWorkOrder?.title,
-        timestamp: Date.now(),
-        ...resultData,
-      });
-      
-      await AsyncStorage.setItem('processResults', JSON.stringify(results));
-    } catch (error) {
-      console.error('Save process result error:', error);
-    }
-  };
 
   if (!selectedWorkOrder) {
     return (

@@ -15,37 +15,58 @@ import { router } from 'expo-router';
 import { SafeAreaWrapper } from '@/components/SafeAreaWrapper';
 
 import { useAppContext } from '@/contexts/AppContext';
-import EnhancedProblemCategoryService from '@/utils/EnhancedProblemCategoryService';
+import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
+import PermissionService from '@/utils/PermissionService';
+import WorkOrderApiService from '@/utils/WorkOrderApiService';
 
 export default function WorkOrdersScreen() {
   const { 
     workOrders, 
+    setWorkOrders,
     workOrderFilter, 
     setWorkOrderFilter, 
     setSelectedWorkOrder,
     loadWorkOrdersFromBackend,
     isLoading,
     error,
+    currentUser,
   } = useAppContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const handleSearch = () => {
-    if (searchQuery.trim()) {
-      // 使用后端搜索功能
-      loadWorkOrdersFromBackend({ search: searchQuery });
-    }
-  };
+  // 获取用户角色和权限
+  const userRole = currentUser?.role;
+  const canViewAllOrders = PermissionService.isAdmin(userRole);
 
-  const handleFilter = () => {
-    Alert.alert('筛选功能', '高级筛选功能开发中，敬请期待');
+  const handleSearch = async () => {
+    if (searchQuery.trim()) {
+      try {
+        const queryParams = PermissionService.getWorkOrderQueryParams(currentUser, userRole);
+        const response = await WorkOrderApiService.getWorkOrders({
+          ...queryParams,
+          search: searchQuery,
+        });
+        
+        if (response.success && response.data?.items) {
+          setWorkOrders(response.data.items);
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+        Alert.alert('搜索失败', '请检查网络连接');
+      }
+    }
   };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await loadWorkOrdersFromBackend();
-      Alert.alert('刷新成功', '工单列表已刷新');
+      const queryParams = PermissionService.getWorkOrderQueryParams(currentUser, userRole);
+      const response = await WorkOrderApiService.getWorkOrders(queryParams);
+      
+      if (response.success && response.data?.items) {
+        setWorkOrders(response.data.items);
+        Alert.alert('刷新成功', `已加载 ${response.data.items.length} 个工单`);
+      }
     } catch (error) {
       console.error('Refresh error:', error);
       Alert.alert('刷新失败', '请检查网络连接');
@@ -54,14 +75,47 @@ export default function WorkOrdersScreen() {
     }
   };
 
+  // 根据权限加载工单数据
+  const loadWorkOrdersWithPermission = async () => {
+    try {
+      const queryParams = PermissionService.getWorkOrderQueryParams(currentUser, userRole);
+      const response = await WorkOrderApiService.getWorkOrders(queryParams);
+      
+      if (response.success && response.data?.items) {
+        setWorkOrders(response.data.items);
+      }
+    } catch (error) {
+      console.error('Load work orders error:', error);
+    }
+  };
+
   // 监听筛选条件变化，自动刷新数据
   useEffect(() => {
-    loadWorkOrdersFromBackend();
-  }, [workOrderFilter, loadWorkOrdersFromBackend]);
+    if (currentUser) {
+      loadWorkOrdersWithPermission();
+    }
+  }, [workOrderFilter, currentUser]);
+
+  // 添加筛选功能
+  const handleFilter = () => {
+    const filterOptions = PermissionService.getStatusFilterOptions(userRole);
+    Alert.alert('筛选功能', '请选择状态筛选', filterOptions.map(option => ({
+      text: option.label,
+      onPress: () => setWorkOrderFilter(option.value),
+    })));
+  };
 
   const handleWorkOrderPress = (workOrder: any) => {
+    // 检查用户是否有查看权限
+    const permissions = PermissionService.getWorkOrderPermissions(workOrder, currentUser, userRole);
+    
+    if (!permissions.canView) {
+      Alert.alert('权限不足', '您没有权限查看此工单');
+      return;
+    }
+    
     setSelectedWorkOrder(workOrder);
-    router.push('/workorder-detail');
+    router.push('/enhanced-workorder-detail'); // 使用增强版工单详情页面
   };
 
   const getFilteredWorkOrders = () => {
@@ -74,7 +128,7 @@ export default function WorkOrdersScreen() {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(order => {
-        const categoryName = EnhancedProblemCategoryService.getCategoryFullName(order.type) || order.type;
+        const categoryName = SimpleProblemCategoryService.getCategoryFullName(order.type) || order.type;
         return order.title.toLowerCase().includes(query) ||
                order.location.toLowerCase().includes(query) ||
                categoryName.toLowerCase().includes(query);
@@ -96,18 +150,40 @@ export default function WorkOrdersScreen() {
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    // Handle both English and Chinese status values
+    const normalizedStatus = translateStatus(status);
+    switch (normalizedStatus) {
+      case '待分配':
+        return '#F59E0B';
+      case '已分配':
+        return '#3B82F6';
       case '待接收':
         return '#F59E0B';
       case '处理中':
-        return '#3B82F6';
+        return '#8B5CF6';
       case '已完成':
         return '#10B981';
       case '待审核':
-        return '#8B5CF6';
+        return '#F59E0B';
+      case '已取消':
+        return '#6B7280';
       default:
         return '#6B7280';
     }
+  };
+
+  // Translate backend status to display status
+  const translateStatus = (status: string): string => {
+    const statusMap: { [key: string]: string } = {
+      'pending': '待分配',
+      'assigned': '已分配', 
+      'accepted': '待接收',
+      'processing': '处理中',
+      'completed': '已完成',
+      'pending_review': '待审核',
+      'cancelled': '已取消',
+    };
+    return statusMap[status?.toLowerCase()] || status;
   };
 
   const renderFilterTab = (filter: string, label: string) => (
@@ -160,7 +236,7 @@ export default function WorkOrdersScreen() {
         <View style={styles.workOrderType}>
           <MaterialIcons name="category" size={14} color="#6B7280" />
           <Text style={styles.workOrderTypeText}>
-            {EnhancedProblemCategoryService.getCategoryFullName(item.type) || item.type}
+            {SimpleProblemCategoryService.getCategoryFullName(item.type) || item.type}
           </Text>
         </View>
         <View
@@ -169,7 +245,7 @@ export default function WorkOrdersScreen() {
             { backgroundColor: getStatusColor(item.status) },
           ]}
         >
-          <Text style={styles.statusText}>{item.status}</Text>
+          <Text style={styles.statusText}>{translateStatus(item.status)}</Text>
         </View>
       </View>
     </TouchableOpacity>
