@@ -1,21 +1,21 @@
-import React, { useMemo, useCallback } from 'react';
+import { AppStatusBar, StatusBarConfigs } from '@/components/AppStatusBar';
+import { MaterialIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
-  Dimensions,
-  Platform,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { BlurView } from 'expo-blur';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppStatusBar, StatusBarConfigs } from '@/components/AppStatusBar';
 
 import { useAppContext } from '@/contexts/AppContext';
+import WeatherService, { WeatherData } from '@/utils/WeatherService';
 
 export default function DashboardScreen() {
   const { 
@@ -23,10 +23,56 @@ export default function DashboardScreen() {
     setSelectedWorkOrder, 
     dashboardStats,
     refreshDashboardStats,
+    loadWorkOrdersFromBackend,
     isLoading,
     currentUser 
   } = useAppContext();
   const insets = useSafeAreaInsets();
+  
+  // 天气状态
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  
+  // 延迟加载天气数据，避免阻塞初始化
+  useEffect(() => {
+    // 延迟2秒后加载天气，让应用先完成初始化
+    const timer = setTimeout(() => {
+      loadWeatherData();
+    }, 2000);
+    
+    return () => clearTimeout(timer);
+  }, []);
+  
+  const loadWeatherData = useCallback(async () => {
+    setWeatherLoading(true);
+    try {
+      const weatherData = await WeatherService.getWeather();
+      setWeather(weatherData);
+    } catch (error) {
+      console.error('加载天气失败:', error);
+      // 天气加载失败不影响应用使用
+    } finally {
+      setWeatherLoading(false);
+    }
+  }, []);
+  
+  // 调试函数
+  const handleRefreshData = useCallback(async () => {
+    console.log('=== 手动刷新数据开始 ===');
+    try {
+      console.log('正在加载工单数据...');
+      await loadWorkOrdersFromBackend();
+      console.log('正在加载统计数据...');
+      await refreshDashboardStats();
+      console.log('正在刷新天气数据...');
+      await loadWeatherData();
+      console.log('=== 刷新完成 ===');
+      console.log('当前工单数量:', workOrders.length);
+      console.log('当前统计数据:', dashboardStats);
+    } catch (error) {
+      console.error('刷新数据失败:', error);
+    }
+  }, [loadWorkOrdersFromBackend, refreshDashboardStats, loadWeatherData, workOrders, dashboardStats]);
 
   // 优先使用后端统计数据，如果没有则使用本地计算
   const stats = useMemo(() => {
@@ -62,7 +108,10 @@ export default function DashboardScreen() {
   }, [dashboardStats, workOrders]);
 
   // 使用 useMemo 优化计算结果
-  const pendingOrders = useMemo(() => workOrders.filter(order => order.status === '待接收'), [workOrders]);
+  // 待办工单包括：待分配、待接收的工单
+  const pendingOrders = useMemo(() => workOrders.filter(order => 
+    order.status === '待接收' || order.status === '待分配'
+  ), [workOrders]);
   const processingOrders = useMemo(() => workOrders.filter(order => order.status === '处理中'), [workOrders]);
   const completedOrders = useMemo(() => workOrders.filter(order => order.status === '已完成'), [workOrders]);
 
@@ -158,11 +207,40 @@ export default function DashboardScreen() {
           {/* 头部玻璃态效果区域 */}
           <BlurView intensity={20} style={styles.headerBlur}>
             <View style={styles.headerTop}>
-              <View>
+              <View style={styles.headerLeft}>
                 <Text style={styles.greeting}>{getGreeting()}，{getUserDisplayName()}</Text>
-                <Text style={styles.subGreeting}>今天是个适合巡查的好天气</Text>
+                <View style={styles.weatherContainer}>
+                  {weatherLoading ? (
+                    <ActivityIndicator size="small" color="#475569" />
+                  ) : weather ? (
+                    <View style={styles.weatherInfo}>
+                      <MaterialIcons 
+                        name={WeatherService.getWeatherIcon(weather.now.code)} 
+                        size={16} 
+                        color="#475569" 
+                      />
+                      <Text style={styles.weatherText}>
+                        {weather.now.text} {weather.now.temp}℃
+                      </Text>
+                      {weather.now.humidity && (
+                        <Text style={styles.weatherDetail}>湿度 {weather.now.humidity}%</Text>
+                      )}
+                    </View>
+                  ) : (
+                    <Text style={styles.subGreeting}>今天是个适合巡查的好天气</Text>
+                  )}
+                </View>
+                <Text style={styles.subGreeting}>
+                  {weather ? WeatherService.getWeatherSuggestion(weather) : '记得保持安全巡查'}
+                </Text>
               </View>
               <View style={styles.headerActions}>
+                <TouchableOpacity
+                  style={styles.actionIcon}
+                  onPress={handleRefreshData}
+                >
+                  <MaterialIcons name="refresh" size={20} color="#475569" />
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.actionIcon}
                   onPress={handleNotificationClick}
@@ -172,7 +250,7 @@ export default function DashboardScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-
+            
             {/* 现代化统计卡片 */}
             <View style={styles.statsContainer}>
               <LinearGradient
@@ -356,8 +434,12 @@ const styles = StyleSheet.create({
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 20,
+  },
+  headerLeft: {
+    flex: 1,
+    marginRight: 12,
   },
   greeting: {
     fontSize: 20,
@@ -365,9 +447,28 @@ const styles = StyleSheet.create({
     color: '#1e293b',
     marginBottom: 4,
   },
+  weatherContainer: {
+    marginVertical: 4,
+  },
+  weatherInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  weatherText: {
+    fontSize: 14,
+    color: '#475569',
+    fontWeight: '500',
+  },
+  weatherDetail: {
+    fontSize: 12,
+    color: '#64748b',
+    marginLeft: 4,
+  },
   subGreeting: {
     fontSize: 14,
     color: '#64748b',
+    marginTop: 2,
   },
   headerActions: {
     flexDirection: 'row',

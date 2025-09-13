@@ -13,13 +13,33 @@ import { router } from 'expo-router';
 
 import { useAppContext } from '@/contexts/AppContext';
 import { PageContainer } from '@/components/PageContainer';
-import LocationService from '@/utils/LocationService';
-import AttendanceService from '@/utils/AttendanceService';
-import FileUploadService from '@/utils/FileUploadService';
-import MessageService from '@/utils/MessageService';
-import ReportService from '@/utils/ReportService';
-import problemCategoryService from '@/utils/ProblemCategoryService';
+import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
 import { LoadingState } from '@/components/LoadingState';
+
+// Mock 服务方法
+const MockServices = {
+  formatWorkTime: (milliseconds: number) => {
+    const hours = Math.floor(milliseconds / 3600000);
+    const minutes = Math.floor((milliseconds % 3600000) / 60000);
+    return `${hours}小时${minutes}分钟`;
+  },
+  
+  formatDistance: (distance: number) => {
+    if (distance < 1000) {
+      return `${distance.toFixed(0)}米`;
+    }
+    return `${(distance / 1000).toFixed(2)}公里`;
+  },
+  
+  formatDuration: (duration: number) => {
+    const hours = Math.floor(duration / 3600);
+    const minutes = Math.floor((duration % 3600) / 60);
+    if (hours > 0) {
+      return `${hours}小时${minutes}分钟`;
+    }
+    return `${minutes}分钟`;
+  }
+};
 
 // 简化的图表组件
 const SimpleBarChart = ({ data, height = 120 }: { data: any[], height?: number }) => {
@@ -224,20 +244,26 @@ export default function EnhancedStatisticsScreen() {
   const loadStatistics = async () => {
     setIsLoading(true);
     try {
-      // 获取各种统计数据
-      const [
-        reportStats,
-        attendanceStats,
-        trackStats,
-        uploadStats,
-        messageStats,
-      ] = await Promise.all([
-        ReportService.getReports(),
-        AttendanceService.getAttendanceStats(currentUser?.username || ''),
-        LocationService.getTrackStats(),
-        FileUploadService.getUploadStats(),
-        MessageService.getMessageStats(),
-      ]);
+      // 使用 Mock 数据替代服务调用
+      const reportStats = [];  // Mock: 空数组或示例数据
+      const attendanceStats = {
+        totalDays: 20,
+        totalHours: 160,
+        averageHours: 8,
+      };
+      const trackStats = {
+        totalDistance: 125.5,
+        totalDuration: 45000,
+        routeCount: 15,
+      };
+      const uploadStats = {
+        totalUploads: 48,
+        totalSize: 256000000,
+      };
+      const messageStats = {
+        unreadCount: 3,
+        totalCount: 25,
+      };
 
       // 基础工单统计
       const totalReports = workOrders.length;
@@ -306,18 +332,18 @@ export default function EnhancedStatisticsScreen() {
 
   const calculateCategoryStats = (orders: any[]) => {
     // 获取所有主要分类
-    const mainCategories = problemCategoryService.getMainCategories();
+    const mainCategories = SimpleProblemCategoryService.getMainCategories();
     const colors = ['#EF4444', '#3B82F6', '#F59E0B', '#10B981'];
     
     return mainCategories.map((category, index) => {
       // 获取该主分类下的所有子分类和具体问题
-      const subCategories = problemCategoryService.getSubCategories(category.id);
+      const subCategories = SimpleProblemCategoryService.getSubCategories(category.id);
       const allSubIds = subCategories.map(sub => sub.id);
       
       // 获取所有三级分类ID
       const detailIds: string[] = [];
       subCategories.forEach(sub => {
-        const details = problemCategoryService.getDetailCategories(sub.id);
+        const details = SimpleProblemCategoryService.getDetailCategories(sub.id);
         detailIds.push(...details.map(detail => detail.id));
       });
       
@@ -418,15 +444,15 @@ export default function EnhancedStatisticsScreen() {
   };
 
   const formatWorkTime = (milliseconds: number) => {
-    return AttendanceService.formatWorkTime(milliseconds);
+    return MockServices.formatWorkTime(milliseconds);
   };
 
   const formatDistance = (distance: number) => {
-    return LocationService.formatDistance(distance);
+    return MockServices.formatDistance(distance);
   };
 
   const formatDuration = (duration: number) => {
-    return LocationService.formatDuration(duration);
+    return MockServices.formatDuration(duration);
   };
 
   const getStatusColor = (status: string, risk?: string) => {

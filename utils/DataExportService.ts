@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Alert } from 'react-native';
-import problemCategoryService from './ProblemCategoryService';
+import SimpleProblemCategoryService from './SimpleProblemCategoryService';
 
 export interface ExportOptions {
   format: 'json' | 'csv' | 'excel';
@@ -274,16 +274,16 @@ class DataExportService {
     const completionRate = totalWorkOrders > 0 ? Math.round((completedWorkOrders / totalWorkOrders) * 100) : 0;
 
     // 分类统计 - 使用新的问题分类系统
-    const mainCategories = problemCategoryService.getMainCategories();
+    const mainCategories = SimpleProblemCategoryService.getMainCategories();
     const categoryStats = mainCategories.map(category => {
       // 获取该主分类下的所有子分类和具体问题
-      const subCategories = problemCategoryService.getSubCategories(category.id);
+      const subCategories = SimpleProblemCategoryService.getSubCategories(category.id);
       const allSubIds = subCategories.map(sub => sub.id);
       
       // 获取所有三级分类ID
       const detailIds: string[] = [];
       subCategories.forEach(sub => {
-        const details = problemCategoryService.getDetailCategories(sub.id);
+        const details = SimpleProblemCategoryService.getDetailCategories(sub.id);
         detailIds.push(...details.map(detail => detail.id));
       });
       

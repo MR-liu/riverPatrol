@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaWrapper } from '@/components/SafeAreaWrapper';
 
 import { useAppContext } from '@/contexts/AppContext';
@@ -36,7 +36,53 @@ export default function WorkOrdersScreen() {
 
   // 获取用户角色和权限
   const userRole = currentUser?.role;
+  const userRoleId = currentUser?.role_id || currentUser?.role?.id;
   const canViewAllOrders = PermissionService.isAdmin(userRole);
+  
+  // 根据角色获取筛选标签
+  const getFilterTabsForRole = () => {
+    switch (userRoleId) {
+      case 'R001': // 系统管理员
+      case 'R002': // 监控中心主管
+        return [
+          { value: '待分配', label: '待分配' },
+          { value: '已分配', label: '已分配' },
+          { value: '处理中', label: '处理中' },
+          { value: '待审核', label: '待审核' },
+          { value: '已完成', label: '已完成' },
+        ];
+      
+      case 'R003': // 河道维护员
+      case 'R004': // 河道巡检员
+        return [
+          { value: '待接收', label: '待接收' },  // assigned 状态对维护员显示为"待接收"
+          { value: '处理中', label: '处理中' },
+          { value: '已完成', label: '已完成' },
+        ];
+      
+      case 'R005': // 领导看板用户
+        return [
+          { value: '处理中', label: '处理中' },
+          { value: '待审核', label: '待审核' },
+          { value: '已完成', label: '已完成' },
+        ];
+      
+      case 'R006': // 河道维护员主管
+        return [
+          { value: '待分配', label: '待分配' },
+          { value: '已分配', label: '已分配' },
+          { value: '处理中', label: '处理中' },
+          { value: '待审核', label: '待审核' },
+          { value: '已完成', label: '已完成' },
+        ];
+      
+      default:
+        return [
+          { value: '处理中', label: '处理中' },
+          { value: '已完成', label: '已完成' },
+        ];
+    }
+  };
 
   const handleSearch = async () => {
     if (searchQuery.trim()) {
@@ -48,7 +94,17 @@ export default function WorkOrdersScreen() {
         });
         
         if (response.success && response.data?.items) {
-          setWorkOrders(response.data.items);
+          // 转换数据格式以适配界面显示，但保留原始数据用于权限检查
+          const formattedOrders = response.data.items.map((order: any) => ({
+            // 保留所有原始字段
+            ...order,
+            // 覆盖特定字段用于显示
+            priority: order.priority === 'urgent' ? '紧急' : order.priority === 'important' ? '重要' : '普通',
+            type: order.type_id,
+            location: order.location || order.area?.name || '未知位置',
+            time: new Date(order.created_at).toLocaleString('zh-CN'),
+          }));
+          setWorkOrders(formattedOrders);
         }
       } catch (error) {
         console.error('Search error:', error);
@@ -64,7 +120,22 @@ export default function WorkOrdersScreen() {
       const response = await WorkOrderApiService.getWorkOrders(queryParams);
       
       if (response.success && response.data?.items) {
-        setWorkOrders(response.data.items);
+        // 转换数据格式以适配界面显示，但保留原始数据用于权限检查
+        const formattedOrders = response.data.items.map((order: any) => ({
+          // 保留所有原始字段
+          ...order,
+          // 添加权限检查需要的字段
+          assignee_id: order.assignee?.id || order.assignee_id,
+          creator_id: order.creator?.id || order.creator_id,
+          area_id: order.area?.id || order.area_id,
+          // 覆盖特定字段用于显示
+          priority: order.priority === 'urgent' ? '紧急' : order.priority === 'important' ? '重要' : '普通',
+          type: order.type_id,
+          location: order.location || order.area?.name || '未知位置',
+          time: order.created_at ? new Date(order.created_at).toLocaleString('zh-CN') : 
+                (order.createdAt ? new Date(order.createdAt).toLocaleString('zh-CN') : '未知时间'),
+        }));
+        setWorkOrders(formattedOrders);
         Alert.alert('刷新成功', `已加载 ${response.data.items.length} 个工单`);
       }
     } catch (error) {
@@ -82,7 +153,22 @@ export default function WorkOrdersScreen() {
       const response = await WorkOrderApiService.getWorkOrders(queryParams);
       
       if (response.success && response.data?.items) {
-        setWorkOrders(response.data.items);
+        // 转换数据格式以适配界面显示，但保留原始数据用于权限检查
+        const formattedOrders = response.data.items.map((order: any) => ({
+          // 保留所有原始字段
+          ...order,
+          // 添加权限检查需要的字段
+          assignee_id: order.assignee?.id || order.assignee_id,
+          creator_id: order.creator?.id || order.creator_id,
+          area_id: order.area?.id || order.area_id,
+          // 覆盖特定字段用于显示
+          priority: order.priority === 'urgent' ? '紧急' : order.priority === 'important' ? '重要' : '普通',
+          type: order.type_id,
+          location: order.location || order.area?.name || '未知位置',
+          time: order.created_at ? new Date(order.created_at).toLocaleString('zh-CN') : 
+                (order.createdAt ? new Date(order.createdAt).toLocaleString('zh-CN') : '未知时间'),
+        }));
+        setWorkOrders(formattedOrders);
       }
     } catch (error) {
       console.error('Load work orders error:', error);
@@ -96,6 +182,15 @@ export default function WorkOrdersScreen() {
     }
   }, [workOrderFilter, currentUser]);
 
+  // 页面获得焦点时重新加载数据
+  useFocusEffect(
+    React.useCallback(() => {
+      if (currentUser) {
+        loadWorkOrdersWithPermission();
+      }
+    }, [currentUser])
+  );
+
   // 添加筛选功能
   const handleFilter = () => {
     const filterOptions = PermissionService.getStatusFilterOptions(userRole);
@@ -107,7 +202,11 @@ export default function WorkOrdersScreen() {
 
   const handleWorkOrderPress = (workOrder: any) => {
     // 检查用户是否有查看权限
+    console.log('当前用户:', currentUser?.id, '角色:', currentUser?.role_id);
+    console.log('工单信息:', { id: workOrder.id, assignee_id: workOrder.assignee_id });
+    
     const permissions = PermissionService.getWorkOrderPermissions(workOrder, currentUser, userRole);
+    console.log('权限结果:', permissions);
     
     if (!permissions.canView) {
       Alert.alert('权限不足', '您没有权限查看此工单');
@@ -122,7 +221,18 @@ export default function WorkOrdersScreen() {
     let filtered = workOrders;
 
     if (workOrderFilter !== 'all') {
-      filtered = workOrders.filter(order => order.status === workOrderFilter);
+      // 将中文状态转换为英文状态进行筛选
+      const statusMap: { [key: string]: string } = {
+        '待分配': 'pending',     // 待分配（监控主管、区域主管看）
+        '已分配': 'assigned',     // 已分配（区域主管看）
+        '待接收': 'assigned',     // 待接收（维护员看，实际是 assigned 状态）
+        '处理中': 'processing',   // 处理中
+        '待审核': 'pending_review', // 待审核（区域主管审核）
+        '已完成': 'completed',    // 已完成
+        '已取消': 'cancelled',    // 已取消
+      };
+      const englishStatus = statusMap[workOrderFilter] || workOrderFilter;
+      filtered = workOrders.filter(order => order.status === englishStatus);
     }
 
     if (searchQuery.trim()) {
@@ -172,12 +282,16 @@ export default function WorkOrdersScreen() {
     }
   };
 
-  // Translate backend status to display status
+  // Translate backend status to display status based on user role
   const translateStatus = (status: string): string => {
+    // 对维护员和巡检员，assigned 状态显示为"待接收"
+    if ((userRoleId === 'R003' || userRoleId === 'R004') && status === 'assigned') {
+      return '待接收';
+    }
+    
     const statusMap: { [key: string]: string } = {
       'pending': '待分配',
       'assigned': '已分配', 
-      'accepted': '待接收',
       'processing': '处理中',
       'completed': '已完成',
       'pending_review': '待审核',
@@ -242,7 +356,7 @@ export default function WorkOrdersScreen() {
         <View
           style={[
             styles.statusBadge,
-            { backgroundColor: getStatusColor(item.status) },
+            { backgroundColor: getStatusColor(translateStatus(item.status)) },
           ]}
         >
           <Text style={styles.statusText}>{translateStatus(item.status)}</Text>
@@ -298,13 +412,12 @@ export default function WorkOrdersScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
-          {/* 筛选标签 */}
+          {/* 筛选标签 - 根据角色动态显示 */}
           <View style={styles.filterTabs}>
             {renderFilterTab('all', '全部')}
-            {renderFilterTab('待接收', '待接收')}
-            {renderFilterTab('处理中', '处理中')}
-            {renderFilterTab('待审核', '待审核')}
-            {renderFilterTab('已完成', '已完成')}
+            {getFilterTabsForRole().map(tab => 
+              renderFilterTab(tab.value, tab.label)
+            )}
           </View>
         </View>
 

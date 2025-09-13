@@ -89,48 +89,92 @@ class PermissionService {
       return this.getDefaultPermissions();
     }
 
-    const isAdmin = this.isAdmin(currentUser);
-    const isCreator = workOrder.creator_id === currentUser.id;
-    const isAssignee = workOrder.assignee_id === currentUser.id;
-    const isReviewer = workOrder.reviewer_id === currentUser.id;
+    const roleId = currentUser.role_id || currentUser.roleId;
+    const userId = currentUser.id;
+    const areaId = currentUser.areaId || currentUser.area_id;
     
-    // 工单状态
+    // 工单状态 - 支持中文和英文状态
     const status = workOrder.status?.toLowerCase();
-    const isStatusPending = status === 'pending';
-    const isStatusAssigned = status === 'assigned';
-    const isStatusProcessing = status === 'processing';
-    const isStatusPendingReview = status === 'pending_review';
-    const isStatusCompleted = status === 'completed';
-    const isStatusCancelled = status === 'cancelled';
-
-    return {
-      // 查看权限：管理员能看所有，用户只能看相关的
-      canView: isAdmin || isCreator || isAssignee || isReviewer || 
-               this.hasPermission(currentUser, 'workorder.view'),
-
-      // 分配权限：只有管理员或有分配权限的用户能分配待分配的工单
-      canAssign: (isAdmin || this.hasPermission(currentUser, 'workorder.assign')) && isStatusPending,
-
-      // 接收权限：被分配的用户能接收已分配的工单
-      canAccept: isAssignee && isStatusAssigned,
-
-      // 开始处理权限：被分配的用户能开始处理中的工单
-      canStart: isAssignee && (isStatusAssigned || isStatusProcessing),
-
-      // 完成处理权限：被分配的用户能完成处理中的工单，管理员也可以
-      canComplete: (isAssignee || (isAdmin && this.hasPermission(currentUser, 'workorder.complete'))) && isStatusProcessing,
-
-      // 审核权限：管理员或有审核权限的用户能审核待审核的工单
-      canReview: (isAdmin || this.hasPermission(currentUser, 'workorder.review')) && isStatusPendingReview,
-
-      // 取消权限：管理员和创建者能取消未完成的工单
-      canCancel: (isAdmin || isCreator || this.hasPermission(currentUser, 'workorder.cancel')) && 
-                 !isStatusCompleted && !isStatusCancelled,
-
-      // 编辑权限：管理员和处理人能编辑未完成的工单
-      canEdit: (isAdmin || isAssignee || this.hasPermission(currentUser, 'workorder.update')) && 
-               !isStatusCompleted && !isStatusCancelled,
-    };
+    const chineseStatus = workOrder.status; // 可能是中文状态
+    
+    const isStatusPending = status === 'pending' || chineseStatus === '待分配';
+    const isStatusAssigned = status === 'assigned' || chineseStatus === '已分配';
+    const isStatusProcessing = status === 'processing' || chineseStatus === '处理中';
+    const isStatusPendingReview = status === 'pending_review' || chineseStatus === '待审核';
+    const isStatusCompleted = status === 'completed' || chineseStatus === '已完成';
+    const isStatusCancelled = status === 'cancelled' || chineseStatus === '已取消';
+    
+    // 检查用户角色
+    const isAssignee = workOrder.assignee_id === userId;
+    const isCreator = workOrder.creator_id === userId;
+    const isAreaSupervisor = roleId === 'R006' && areaId === workOrder.area_id;
+    
+    // 根据角色ID判断权限
+    switch (roleId) {
+      case 'R001': // 系统管理员
+      case 'R002': // 监控中心主管
+        return {
+          canView: true,
+          canAssign: isStatusPending,
+          canAccept: false,
+          canStart: false,
+          canComplete: false,
+          canReview: isStatusPendingReview,
+          canCancel: !isStatusCompleted && !isStatusCancelled,
+          canEdit: !isStatusCompleted && !isStatusCancelled,
+        };
+        
+      case 'R003': // 河道维护员
+        return {
+          canView: isAssignee,
+          canAssign: false,
+          canAccept: false,
+          canStart: isAssignee && (isStatusAssigned || isStatusPending),
+          canComplete: isAssignee && isStatusProcessing,
+          canReview: false,
+          canCancel: false,
+          canEdit: false,
+        };
+        
+      case 'R004': // 河道巡检员
+        return {
+          canView: isCreator || isAssignee,
+          canAssign: false,
+          canAccept: false,
+          canStart: isAssignee && (isStatusAssigned || isStatusPending),
+          canComplete: isAssignee && isStatusProcessing,
+          canReview: false,
+          canCancel: isCreator && !isStatusCompleted && !isStatusCancelled,
+          canEdit: false,
+        };
+        
+      case 'R005': // 领导看板用户
+        return {
+          canView: true,
+          canAssign: false,
+          canAccept: false,
+          canStart: false,
+          canComplete: false,
+          canReview: false,
+          canCancel: false,
+          canEdit: false,
+        };
+        
+      case 'R006': // 河道维护员主管
+        return {
+          canView: isAreaSupervisor,
+          canAssign: isAreaSupervisor && isStatusPending,
+          canAccept: false,
+          canStart: false,
+          canComplete: false,
+          canReview: isAreaSupervisor && isStatusPendingReview,
+          canCancel: isAreaSupervisor && !isStatusCompleted && !isStatusCancelled,
+          canEdit: false,
+        };
+        
+      default:
+        return this.getDefaultPermissions();
+    }
   }
 
   /**
@@ -155,16 +199,33 @@ class PermissionService {
   getWorkOrderQueryParams(currentUser: AuthUser | any, userRole?: any): any {
     if (!currentUser) return {};
 
-    const isAdmin = this.isAdmin(currentUser);
+    const roleId = currentUser.role_id || currentUser.role?.id || userRole?.id;
     
-    if (isAdmin) {
-      // 管理员可以查看所有工单
-      return {};
-    } else {
-      // 普通用户只能查看自己相关的工单
-      return {
-        user_id: currentUser.id,  // 查询创建的或分配给自己的工单
-      };
+    // 根据不同角色返回不同的查询参数
+    switch (roleId) {
+      case 'R001': // 系统管理员
+      case 'R002': // 监控中心主管
+      case 'R005': // 领导看板用户
+        // 可以查看所有工单
+        return {};
+        
+      case 'R006': // 河道维护员主管
+        // 只查看自己管理区域的工单，不需要 user_id 参数
+        // area_id 过滤已经在后端 API 中处理
+        return {};
+        
+      case 'R003': // 河道维护员
+      case 'R004': // 河道巡检员
+        // 只能查看分配给自己或自己创建的工单
+        return {
+          user_id: currentUser.id,
+        };
+        
+      default:
+        // 默认只能查看自己相关的工单
+        return {
+          user_id: currentUser.id,
+        };
     }
   }
 

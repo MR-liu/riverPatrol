@@ -1,5 +1,6 @@
 import OptimizedApiService from './OptimizedApiService';
 import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface UpdateWorkOrderStatusRequest {
   workorder_id: string;
@@ -40,28 +41,46 @@ export interface SubmitWorkOrderResultRequest {
 }
 
 class WorkOrderApiService {
-  // 更新工单状态 - 使用 OptimizedApiService
+  // 更新工单状态 - 使用新的 app-workorders API
   async updateWorkOrderStatus(request: UpdateWorkOrderStatusRequest): Promise<UpdateWorkOrderStatusResponse> {
     try {
       console.log('更新工单状态:', request);
 
-      const result = await OptimizedApiService.updateWorkOrderStatus(
-        request.workorder_id,
-        request.action,
-        request.note,
-        request.location_info,
-        request.attachments
-      );
+      // 直接调用新的 app-workorders API
+      const token = await AsyncStorage.getItem('access_token');
+      const baseUrl = process.env.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+      const url = `${baseUrl}/api/app-workorders/${request.workorder_id}`;
+      
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: request.action,
+          note: request.note,
+          attachments: request.attachments,
+          assigneeId: (request as any).assigneeId,
+          processResult: (request as any).processResult,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || result.error || '更新失败');
+      }
 
       console.log('工单状态更新成功:', result);
       return {
         success: result.success,
         message: result.message || '更新成功',
         data: result.data ? {
-          workorder_id: result.data.workorder_id,
-          old_status: result.data.old_status,
-          new_status: result.data.new_status,
-          updated_at: new Date().toISOString(),
+          workorder_id: result.data.workorder?.id || request.workorder_id,
+          old_status: result.data.oldStatus,
+          new_status: result.data.newStatus,
+          updated_at: result.data.workorder?.updated_at || new Date().toISOString(),
         } : undefined
       };
     } catch (error) {
@@ -74,13 +93,14 @@ class WorkOrderApiService {
     }
   }
 
-  // 接收工单
-  async acceptWorkOrder(workOrderId: string, note?: string): Promise<UpdateWorkOrderStatusResponse> {
+  // 分配工单（区域主管使用）
+  async assignWorkOrder(workOrderId: string, assigneeId: string, note?: string): Promise<UpdateWorkOrderStatusResponse> {
     return this.updateWorkOrderStatus({
       workorder_id: workOrderId,
-      action: 'accept',
-      note: note || '工单已接收',
-    });
+      action: 'assign',
+      note: note || '分配工单',
+      assigneeId,
+    } as any);
   }
 
   // 开始处理工单
@@ -93,13 +113,32 @@ class WorkOrderApiService {
     });
   }
 
-  // 完成工单
-  async completeWorkOrder(workOrderId: string, attachments?: string[], note?: string): Promise<UpdateWorkOrderStatusResponse> {
+  // 提交处理结果（维护员使用）
+  async submitResult(workOrderId: string, processResult?: any, attachments?: string[], note?: string): Promise<UpdateWorkOrderStatusResponse> {
     return this.updateWorkOrderStatus({
       workorder_id: workOrderId,
-      action: 'complete',
+      action: 'submit_result',
       attachments,
-      note: note || '工单处理完成',
+      note: note || '提交处理结果',
+      processResult,
+    } as any);
+  }
+
+  // 审核通过（区域主管使用）
+  async approveWorkOrder(workOrderId: string, note?: string): Promise<UpdateWorkOrderStatusResponse> {
+    return this.updateWorkOrderStatus({
+      workorder_id: workOrderId,
+      action: 'approve',
+      note: note || '审核通过',
+    });
+  }
+
+  // 审核拒绝/打回（区域主管使用）
+  async rejectWorkOrder(workOrderId: string, note: string): Promise<UpdateWorkOrderStatusResponse> {
+    return this.updateWorkOrderStatus({
+      workorder_id: workOrderId,
+      action: 'reject',
+      note,
     });
   }
 
@@ -115,13 +154,17 @@ class WorkOrderApiService {
   // 提交工单处理结果
   async submitWorkOrderResult(request: SubmitWorkOrderResultRequest): Promise<any> {
     try {
-      const token = this.getAuthToken();
-      const headers = getAuthHeaders(token);
+      const token = await AsyncStorage.getItem('access_token');
+      const baseUrl = process.env.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
 
       console.log('提交工单处理结果到数据库:', request);
 
       // 首先创建工单结果记录
-      const resultResponse = await fetch(`${this.baseUrl}/create-workorder-result`, {
+      const resultResponse = await fetch(`${baseUrl}/api/create-workorder-result`, {
         method: 'POST',
         headers,
         body: JSON.stringify(request),
@@ -153,7 +196,7 @@ class WorkOrderApiService {
     }
   }
 
-  // 获取工单列表 - 使用 OptimizedApiService
+  // 获取工单列表 - 使用新的 app-workorders API
   async getWorkOrders(params?: {
     user_id?: string;
     status?: string;
@@ -163,8 +206,32 @@ class WorkOrderApiService {
     try {
       console.log('获取工单列表 - 参数:', params);
 
-      const result = await OptimizedApiService.getWorkOrders(params || {});
+      // 使用新的 app-workorders API
+      const token = await AsyncStorage.getItem('access_token');
+      const baseUrl = process.env.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
       
+      // 构建查询参数
+      const queryParams = new URLSearchParams();
+      if (params?.status) queryParams.append('status', params.status);
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.size) queryParams.append('limit', params.size.toString());
+      
+      const url = `${baseUrl}/api/app-workorders${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || result.error || '获取工单列表失败');
+      }
+
       console.log('工单列表获取成功:', result.data?.items?.length || 0, '个工单');
       return result;
     } catch (error) {

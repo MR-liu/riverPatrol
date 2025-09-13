@@ -14,41 +14,7 @@ import { AppStatusBar, StatusBarConfigs } from '@/components/AppStatusBar';
 
 import LocationService, { LocationResult } from '@/utils/LocationService';
 import { useAppContext } from '@/contexts/AppContext';
-import MapComponent from '@/components/MapComponent';
-
-// 创建Marker组件来处理地图标记
-const MapMarker: React.FC<{ 
-  coordinate: { latitude: number; longitude: number };
-  title?: string;
-  description?: string;
-  pinColor?: string;
-  onPress?: () => void;
-}> = ({ coordinate, title, description, pinColor = 'red', onPress }) => {
-  if (Platform.OS === 'web') {
-    // Web平台不显示标记
-    return null;
-  }
-
-  try {
-    // 使用eval来避免Metro在web上解析这个模块
-    const moduleName = 'react-native-maps';
-    const RNMaps = eval(`require('${moduleName}')`);
-    const Marker = RNMaps.Marker;
-    
-    return (
-      <Marker
-        coordinate={coordinate}
-        title={title}
-        description={description}
-        pinColor={pinColor}
-        onPress={onPress}
-      />
-    );
-  } catch (error) {
-    console.warn('Marker component not available:', error);
-    return null;
-  }
-};
+import OSMapView from '@/components/OSMapView';
 
 interface WorkOrderMarker {
   id: string;
@@ -73,20 +39,54 @@ export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const [currentLocation, setCurrentLocation] = useState<LocationResult | null>(null);
   const [region, setRegion] = useState<Region>({
-    latitude: 39.9042,
-    longitude: 116.4074,
+    latitude: 31.230416, // 更新为上海坐标
+    longitude: 121.473701,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
   const [isLocationEnabled, setIsLocationEnabled] = useState(false);
-  const [workOrderMarkers, setWorkOrderMarkers] = useState<WorkOrderMarker[]>([]);
-  const [isTrackingActive, setIsTrackingActive] = useState(false);
-  const [currentTrackPoints, setCurrentTrackPoints] = useState<any[]>([]);
+  const [workOrderMarkers, setWorkOrderMarkers] = useState<WorkOrderMarker[]>([
+    {
+      id: 'WO001',
+      coordinate: { latitude: 31.230416, longitude: 121.473701 },
+      title: '外滩河道巡查',
+      description: '外滩区域河道水质检测',
+      status: '待接收',
+    },
+    {
+      id: 'WO002',
+      coordinate: { latitude: 31.239778, longitude: 121.499718 },
+      title: '陆家嘴水域检查',
+      description: '东方明珠附近水域巡查',
+      status: '处理中',
+    },
+    {
+      id: 'WO003',
+      coordinate: { latitude: 31.223344, longitude: 121.457856 },
+      title: '人民广场排水检测',
+      description: '人民广场区域排水系统检查',
+      status: '已完成',
+    },
+    {
+      id: 'WO004',
+      coordinate: { latitude: 31.245421, longitude: 121.506234 },
+      title: '世纪公园水质监测',
+      description: '世纪公园人工湖水质采样',
+      status: '待审核',
+    },
+    {
+      id: 'WO005',
+      coordinate: { latitude: 31.218534, longitude: 121.484573 },
+      title: '豫园池塘清理',
+      description: '豫园九曲桥池塘清理作业',
+      status: '处理中',
+    },
+  ]);
+  // 移除手动切换逻辑，使用OSMapView
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
       initializeLocation();
-      checkTrackingStatus();
     }
     
     return () => {
@@ -94,27 +94,24 @@ export default function MapScreen() {
     };
   }, []);
 
-  const checkTrackingStatus = async () => {
-    const trackStatus = LocationService.getCurrentTrackStatus();
-    setIsTrackingActive(trackStatus.isTracking);
-    
-    if (trackStatus.track && trackStatus.track.points.length > 0) {
-      setCurrentTrackPoints(trackStatus.track.points);
-    }
-  };
-
   const initializeMarkers = useCallback(() => {
-    // 模拟工单位置数据
-    const markers: WorkOrderMarker[] = workOrders.map((order) => ({
-      id: order.id,
-      coordinate: {
-        latitude: 39.9042 + (Math.random() - 0.5) * 0.01,
-        longitude: 116.4074 + (Math.random() - 0.5) * 0.01,
-      },
-      title: order.title,
-      description: order.description,
-      status: order.status,
-    }));
+    // 转换工单数据为地图标记点
+    const markers: WorkOrderMarker[] = workOrders.map((order) => {
+      // 在上海周边随机分布工单位置
+      const baseLatitude = 31.230416;
+      const baseLongitude = 121.473701;
+      
+      return {
+        id: order.id,
+        coordinate: {
+          latitude: baseLatitude + (Math.random() - 0.5) * 0.02,
+          longitude: baseLongitude + (Math.random() - 0.5) * 0.02,
+        },
+        title: order.title,
+        description: order.description || order.location || '工单详情',
+        status: order.status,
+      };
+    });
     setWorkOrderMarkers(markers);
   }, [workOrders]);
 
@@ -169,112 +166,114 @@ export default function MapScreen() {
     }
   };
 
-  const getMarkerColor = (status: string) => {
-    switch (status) {
-      case '待接收':
-        return 'red';
-      case '处理中':
-        return 'orange';
-      case '已完成':
-        return 'green';
-      case '待审核':
-        return 'purple';
-      default:
-        return 'gray';
-    }
+
+  const renderSmartMap = () => {
+    // 使用OpenStreetMap组件
+    const smartMarkers = workOrderMarkers.map(marker => ({
+      id: marker.id,
+      latitude: marker.coordinate.latitude,
+      longitude: marker.coordinate.longitude,
+      title: marker.title,
+      description: marker.description,
+      type: 'workorder' as const,
+      status: marker.status,
+    }));
+
+    return (
+      <OSMapView
+        style={styles.map}
+        markers={smartMarkers}
+        showUserLocation={true}
+        onLocationChange={(location) => {
+          setCurrentLocation({
+            coords: {
+              latitude: location.latitude,
+              longitude: location.longitude,
+              altitude: 0,
+              accuracy: location.accuracy || 10,
+              heading: 0,
+              speed: 0,
+            },
+            timestamp: Date.now(),
+          } as any);
+        }}
+        onMarkerPress={(markerId) => {
+          const marker = workOrderMarkers.find(m => m.id === markerId);
+          if (marker) {
+            handleMarkerPress(marker);
+          }
+        }}
+      />
+    );
   };
 
-  const renderNativeMap = () => (
-    <MapComponent
-      region={region}
-      onRegionChangeComplete={setRegion}
-    >
-      {/* 当前位置标记 */}
-      {currentLocation && (
-        <MapMarker
-          coordinate={{
-            latitude: currentLocation.coords.latitude,
-            longitude: currentLocation.coords.longitude,
-          }}
-          title="我的位置"
-          description="当前位置"
-          pinColor="#3B82F6"
-        />
-      )}
+  const renderWebMap = () => {
+    // Web平台也使用OpenStreetMap
+    const markers = workOrderMarkers.map(marker => ({
+      id: marker.id,
+      latitude: marker.coordinate.latitude,
+      longitude: marker.coordinate.longitude,
+      title: marker.title,
+      description: marker.description,
+      type: 'workorder' as const,
+      status: marker.status,
+    }));
 
-      {/* 工单标记 */}
-      {workOrderMarkers.map((marker) => (
-        <MapMarker
-          key={marker.id}
-          coordinate={marker.coordinate}
-          title={marker.title}
-          description={marker.description}
-          pinColor={getMarkerColor(marker.status)}
-          onPress={() => handleMarkerPress(marker)}
-        />
-      ))}
-    </MapComponent>
-  );
-
-  const renderWebMap = () => (
-    <MapComponent
-      region={region}
-      onRegionChangeComplete={setRegion}
-    >
-      {/* 工单列表显示 */}
-      <View style={styles.webWorkOrdersList}>
-        <Text style={styles.webListTitle}>工单位置列表：</Text>
-        {workOrderMarkers.slice(0, 3).map((marker) => (
-          <TouchableOpacity
-            key={marker.id}
-            style={styles.webWorkOrderItem}
-            onPress={() => handleMarkerPress(marker)}
-          >
-            <View style={[
-              styles.webMarkerDot,
-              { backgroundColor: getMarkerColor(marker.status) === 'red' ? '#EF4444' : 
-                               getMarkerColor(marker.status) === 'orange' ? '#F59E0B' :
-                               getMarkerColor(marker.status) === 'green' ? '#10B981' : '#8B5CF6' }
-            ]} />
-            <Text style={styles.webWorkOrderTitle}>{marker.title}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </MapComponent>
-  );
+    return (
+      <OSMapView
+        style={styles.map}
+        markers={markers}
+        showUserLocation={false}
+        onMarkerPress={(markerId: string) => {
+          const marker = workOrderMarkers.find(m => m.id === markerId);
+          if (marker) {
+            handleMarkerPress(marker);
+          }
+        }}
+      />
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <AppStatusBar {...StatusBarConfigs.transparent} />
       <View style={[styles.content, { paddingTop: Math.max(insets.top + 10, 30) }]}>
         {/* 地图 */}
-        {Platform.OS === 'web' ? renderWebMap() : renderNativeMap()}
+        {Platform.OS === 'web' ? renderWebMap() : renderSmartMap()}
+
+        {/* 开发中蒙版 */}
+        <View style={styles.developmentOverlay}>
+          <View style={styles.developmentCard}>
+            <MaterialIcons name="construction" size={48} color="#FFA500" />
+            <Text style={styles.developmentTitle}>地图工单功能开发中</Text>
+            <Text style={styles.developmentSubtitle}>该功能正在完善，敬请期待</Text>
+          </View>
+        </View>
 
         {/* 地图控制按钮 */}
-        <View style={styles.mapControls}>
+        <View style={[styles.mapControls, { opacity: 0.3, pointerEvents: 'none' }]}>
           <TouchableOpacity style={styles.controlButton} onPress={handleLocationSearch}>
-            <MaterialIcons name="search" size={24} color="#3B82F6" />
+            <MaterialIcons name="search" size={20} color="#3B82F6" />
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.controlButton} 
-            onPress={() => Alert.alert('定位', '正在获取当前位置...')}
+            onPress={handleMyLocation}
           >
-            <MaterialIcons name="my-location" size={24} color="#3B82F6" />
+            <MaterialIcons name="my-location" size={20} color="#3B82F6" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.controlButton} onPress={handleLayerToggle}>
-            <MaterialIcons name="layers" size={24} color="#3B82F6" />
+            <MaterialIcons name="layers" size={20} color="#3B82F6" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.controlButton} onPress={handleMeasurement}>
-            <MaterialIcons name="straighten" size={24} color="#3B82F6" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.controlButton} onPress={handleMyLocation}>
-            <MaterialIcons name="my-location" size={24} color="#3B82F6" />
+            <MaterialIcons name="straighten" size={20} color="#3B82F6" />
           </TouchableOpacity>
         </View>
 
         {/* 底部信息面板 */}
-        <View style={styles.infoPanel}>
-          <Text style={styles.infoPanelTitle}>工单分布</Text>
+        <View style={[styles.infoPanel, { opacity: 0.3, pointerEvents: 'none' }]}>
+          <View style={styles.infoPanelHeader}>
+            <Text style={styles.infoPanelTitle}>工单分布</Text>
+          </View>
           <View style={styles.legendContainer}>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: '#EF4444' }]} />
@@ -360,9 +359,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   controlButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -371,6 +370,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
+  },
+  activeControlButton: {
+    backgroundColor: '#3B82F6',
   },
   infoPanel: {
     position: 'absolute',
@@ -387,11 +389,30 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  infoPanelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   infoPanelTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1F2937',
-    marginBottom: 12,
+  },
+  mapTypeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(107, 114, 128, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  mapTypeText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   legendContainer: {
     flexDirection: 'row',
@@ -425,5 +446,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
     flex: 1,
+  },
+  developmentOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  developmentCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
+    minWidth: 280,
+  },
+  developmentTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  developmentSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 });

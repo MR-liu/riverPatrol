@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   Alert,
   Modal,
   TextInput,
@@ -17,6 +16,7 @@ import { router } from 'expo-router';
 
 import { useAppContext } from '@/contexts/AppContext';
 import { LoadingState } from '@/components/LoadingState';
+import { SafeAreaWrapper } from '@/components/SafeAreaWrapper';
 import WorkOrderApiService from '@/utils/WorkOrderApiService';
 import PermissionService from '@/utils/PermissionService';
 
@@ -24,6 +24,8 @@ export default function EnhancedWorkOrderDetailScreen() {
   const { selectedWorkOrder, setSelectedWorkOrder, workOrders, setWorkOrders, currentUser } = useAppContext();
   const [isLoading, setIsLoading] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
+  const [rejectModalVisible, setRejectModalVisible] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
   
   // 获取用户角色和权限
   const userRole = currentUser?.role;
@@ -31,7 +33,7 @@ export default function EnhancedWorkOrderDetailScreen() {
 
   if (!selectedWorkOrder) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaWrapper edges={['top']} style={styles.container}>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>未找到工单信息</Text>
           <TouchableOpacity
@@ -41,43 +43,15 @@ export default function EnhancedWorkOrderDetailScreen() {
             <Text style={styles.backButtonText}>返回</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </SafeAreaWrapper>
     );
   }
 
-  // 接收工单
-  const handleAcceptOrder = async () => {
-    if (!selectedWorkOrder || !permissions.canAccept) return;
-
-    Alert.alert(
-      '确认接收工单',
-      '接收后将开始处理，您确定要接收这个工单吗？',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '确认接收',
-          onPress: async () => {
-            setIsLoading(true);
-            try {
-              const response = await WorkOrderApiService.acceptWorkOrder(
-                selectedWorkOrder.id,
-                '工单已接收，准备前往现场处理'
-              );
-
-              if (response.success) {
-                await refreshWorkOrder(response.data?.new_status);
-                Alert.alert('接收成功', '工单已接收，请前往现场处理问题。');
-              }
-            } catch (error) {
-              console.error('Accept order error:', error);
-              Alert.alert('操作失败', '接收工单时发生错误，请重试');
-            } finally {
-              setIsLoading(false);
-            }
-          },
-        },
-      ]
-    );
+  // 分配工单（区域主管使用）
+  const handleAssignOrder = async () => {
+    if (!selectedWorkOrder || !permissions.canAssign) return;
+    // TODO: 实现分配工单的模态框，选择维护员
+    Alert.alert('分配工单', '分配功能开发中...');
   };
 
   // 开始处理工单
@@ -181,8 +155,82 @@ export default function EnhancedWorkOrderDetailScreen() {
     setSelectedWorkOrder(updatedWorkOrder);
   };
 
-  const handleProcessResult = () => {
+  // 提交处理结果 - 跳转到处理结果填写页面
+  const handleSubmitResult = async () => {
+    if (!selectedWorkOrder || !permissions.canComplete) return;
+    
+    // 跳转到处理结果填写页面，让维护员填写处理方法、上传照片等
     router.push('/process-result');
+  };
+
+  // 审核通过
+  const handleApproveOrder = async () => {
+    if (!selectedWorkOrder || !permissions.canReview) return;
+    
+    Alert.alert(
+      '审核通过',
+      '确认审核通过这个工单？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认通过',
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              const response = await WorkOrderApiService.approveWorkOrder(
+                selectedWorkOrder.id,
+                '审核通过'
+              );
+
+              if (response.success) {
+                await refreshWorkOrder(response.data?.new_status);
+                Alert.alert('审核成功', '工单已审核通过');
+              }
+            } catch (error) {
+              console.error('Approve order error:', error);
+              Alert.alert('操作失败', '审核工单失败，请重试');
+            } finally {
+              setIsLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // 审核拒绝/打回
+  const handleRejectOrder = async () => {
+    if (!selectedWorkOrder || !permissions.canReview) return;
+    setRejectModalVisible(true);
+  };
+
+  // 确认拒绝
+  const confirmReject = async () => {
+    if (!rejectReason.trim()) {
+      Alert.alert('请输入原因', '请输入打回原因');
+      return;
+    }
+
+    setRejectModalVisible(false);
+    setIsLoading(true);
+    
+    try {
+      const response = await WorkOrderApiService.rejectWorkOrder(
+        selectedWorkOrder!.id,
+        rejectReason
+      );
+
+      if (response.success) {
+        await refreshWorkOrder(response.data?.new_status);
+        Alert.alert('打回成功', '工单已打回，要求返工');
+        setRejectReason('');
+      }
+    } catch (error) {
+      console.error('Reject order error:', error);
+      Alert.alert('操作失败', '打回工单失败，请重试');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // 渲染操作按钮
@@ -190,21 +238,23 @@ export default function EnhancedWorkOrderDetailScreen() {
     if (!permissions.canView) return null;
 
     const buttons: JSX.Element[] = [];
+    const status = selectedWorkOrder?.status;
 
-    if (permissions.canAccept) {
+    // 根据状态和权限显示不同按钮
+    if (permissions.canAssign && (status === '待分配' || status === 'pending')) {
       buttons.push(
         <TouchableOpacity
-          key="accept"
-          style={[styles.actionButton, { backgroundColor: '#10B981' }]}
-          onPress={handleAcceptOrder}
+          key="assign"
+          style={[styles.actionButton, { backgroundColor: '#3B82F6' }]}
+          onPress={handleAssignOrder}
         >
-          <MaterialIcons name="check-circle" size={20} color="white" />
-          <Text style={styles.actionButtonText}>接收工单</Text>
+          <MaterialIcons name="person-add" size={20} color="white" />
+          <Text style={styles.actionButtonText}>分配工单</Text>
         </TouchableOpacity>
       );
     }
 
-    if (permissions.canStart) {
+    if (permissions.canStart && (status === '已分配' || status === 'assigned' || status === '待分配' || status === 'pending')) {
       buttons.push(
         <TouchableOpacity
           key="start"
@@ -217,15 +267,39 @@ export default function EnhancedWorkOrderDetailScreen() {
       );
     }
 
-    if (permissions.canComplete) {
+    if (permissions.canComplete && (status === '处理中' || status === 'processing')) {
       buttons.push(
         <TouchableOpacity
-          key="complete"
+          key="submit"
           style={[styles.actionButton, { backgroundColor: '#059669' }]}
-          onPress={handleProcessResult}
+          onPress={handleSubmitResult}
         >
-          <MaterialIcons name="done" size={20} color="white" />
-          <Text style={styles.actionButtonText}>处理结果</Text>
+          <MaterialIcons name="check" size={20} color="white" />
+          <Text style={styles.actionButtonText}>提交结果</Text>
+        </TouchableOpacity>
+      );
+    }
+
+    if (permissions.canReview && (status === '待审核' || status === 'pending_review')) {
+      buttons.push(
+        <TouchableOpacity
+          key="approve"
+          style={[styles.actionButton, { backgroundColor: '#10B981' }]}
+          onPress={handleApproveOrder}
+        >
+          <MaterialIcons name="done-all" size={20} color="white" />
+          <Text style={styles.actionButtonText}>审核通过</Text>
+        </TouchableOpacity>
+      );
+      
+      buttons.push(
+        <TouchableOpacity
+          key="reject"
+          style={[styles.actionButton, { backgroundColor: '#F59E0B' }]}
+          onPress={handleRejectOrder}
+        >
+          <MaterialIcons name="replay" size={20} color="white" />
+          <Text style={styles.actionButtonText}>打回返工</Text>
         </TouchableOpacity>
       );
     }
@@ -264,7 +338,7 @@ export default function EnhancedWorkOrderDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaWrapper edges={['top']} style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.headerButton}
@@ -342,7 +416,10 @@ export default function EnhancedWorkOrderDetailScreen() {
                   <MaterialIcons name="access-time" size={20} color="#6B7280" />
                   <View style={styles.infoContent}>
                     <Text style={styles.infoLabel}>上报时间</Text>
-                    <Text style={styles.infoValue}>{selectedWorkOrder.time}</Text>
+                    <Text style={styles.infoValue}>
+                      {selectedWorkOrder.time || 
+                       (selectedWorkOrder.created_at ? new Date(selectedWorkOrder.created_at).toLocaleString('zh-CN') : '未知时间')}
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -385,8 +462,47 @@ export default function EnhancedWorkOrderDetailScreen() {
 
         {/* 权限控制的操作按钮 */}
         {renderActionButtons()}
+        
+        {/* 打回原因模态框 */}
+        <Modal
+          visible={rejectModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setRejectModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>打回原因</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="请输入打回原因..."
+                multiline
+                numberOfLines={4}
+                value={rejectReason}
+                onChangeText={setRejectReason}
+              />
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={() => {
+                    setRejectModalVisible(false);
+                    setRejectReason('');
+                  }}
+                >
+                  <Text style={styles.modalButtonText}>取消</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonConfirm]}
+                  onPress={confirmReject}
+                >
+                  <Text style={[styles.modalButtonText, { color: '#FFFFFF' }]}>确认打回</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </LinearGradient>
-    </SafeAreaView>
+    </SafeAreaWrapper>
   );
 }
 
@@ -586,5 +702,57 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // 模态框样式
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: '#374151',
+    minHeight: 100,
+    textAlignVertical: 'top',
+    marginBottom: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonCancel: {
+    backgroundColor: '#F3F4F6',
+  },
+  modalButtonConfirm: {
+    backgroundColor: '#F59E0B',
+  },
+  modalButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
   },
 });

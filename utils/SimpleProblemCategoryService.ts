@@ -53,6 +53,33 @@ class SimpleProblemCategoryService {
     this.isInitialized = false;
     await this.initialize();
   }
+
+  // 添加缺少的方法以保持兼容性
+  static getMainCategories() {
+    return Object.entries(this.cachedCategories)
+      .filter(([_, cat]) => cat.level === 1)
+      .map(([id, cat]) => ({ id, name: cat.name }));
+  }
+
+  static getSubCategories(parentId: string) {
+    return Object.entries(this.cachedCategories)
+      .filter(([_, cat]) => cat.level === 2 && cat.parent === parentId)
+      .map(([id, cat]) => ({ id, name: cat.name }));
+  }
+
+  static getDetailCategories(parentId: string) {
+    return Object.entries(this.cachedCategories)
+      .filter(([_, cat]) => cat.level === 3 && cat.parent === parentId)
+      .map(([id, cat]) => ({ id, name: cat.name }));
+  }
+
+  static getCategoryById(categoryId: string) {
+    const category = this.cachedCategories[categoryId];
+    if (category) {
+      return { id: categoryId, name: category.name };
+    }
+    return null;
+  }
 }
 
 export default SimpleProblemCategoryService;

@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 
 import { useAppContext } from '@/contexts/AppContext';
 import LocationService from '@/utils/LocationService';
-import problemCategoryService from '@/utils/ProblemCategoryService';
+import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
 
 // 导出页面选项以隐藏header
 export const unstable_settings = {
@@ -194,7 +194,7 @@ export default function WorkOrderDetailScreen() {
                 <View style={styles.infoContent}>
                   <Text style={styles.infoLabel}>问题类型</Text>
                   <Text style={styles.infoValue}>
-                    {problemCategoryService.getCategoryFullName(selectedWorkOrder.type) || selectedWorkOrder.type}
+                    {SimpleProblemCategoryService.getCategoryFullName(selectedWorkOrder.type) || selectedWorkOrder.type}
                   </Text>
                 </View>
               </View>

@@ -12,7 +12,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import problemCategoryService, { CategoryOption } from '@/utils/ProblemCategoryService';
+import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
+
+// 定义CategoryOption类型
+interface CategoryOption {
+  id: string;
+  name: string;
+  parentId?: string;
+}
 
 interface ProblemCategoryPickerProps {
   visible: boolean;
@@ -46,7 +53,7 @@ export const ProblemCategoryPicker: React.FC<ProblemCategoryPickerProps> = ({
   }, [visible]);
 
   const loadMainCategories = () => {
-    const categories = problemCategoryService.getMainCategories();
+    const categories = SimpleProblemCategoryService.getMainCategories();
     setMainCategories(categories);
   };
 
@@ -60,7 +67,7 @@ export const ProblemCategoryPicker: React.FC<ProblemCategoryPickerProps> = ({
 
   const handleMainCategorySelect = (categoryId: string) => {
     setSelectedMainId(categoryId);
-    const subCats = problemCategoryService.getSubCategories(categoryId);
+    const subCats = SimpleProblemCategoryService.getSubCategories(categoryId);
     setSubCategories(subCats);
     setCurrentLevel(2);
     setSelectedSubId('');
@@ -69,14 +76,14 @@ export const ProblemCategoryPicker: React.FC<ProblemCategoryPickerProps> = ({
 
   const handleSubCategorySelect = (categoryId: string) => {
     setSelectedSubId(categoryId);
-    const detailCats = problemCategoryService.getDetailCategories(categoryId);
+    const detailCats = SimpleProblemCategoryService.getDetailCategories(categoryId);
     setDetailCategories(detailCats);
     setCurrentLevel(3);
   };
 
   const handleDetailCategorySelect = (categoryId: string) => {
-    const categoryName = problemCategoryService.getCategoryById(categoryId)?.name || '';
-    const fullPath = problemCategoryService.getCategoryFullName(categoryId);
+    const categoryName = SimpleProblemCategoryService.getCategoryById(categoryId)?.name || '';
+    const fullPath = SimpleProblemCategoryService.getCategoryFullName(categoryId);
     onSelect(categoryId, categoryName, fullPath);
     onClose();
   };
@@ -97,11 +104,11 @@ export const ProblemCategoryPicker: React.FC<ProblemCategoryPickerProps> = ({
   const getCurrentTitle = () => {
     if (currentLevel === 1) return title;
     if (currentLevel === 2) {
-      const mainCategory = problemCategoryService.getCategoryById(selectedMainId);
+      const mainCategory = SimpleProblemCategoryService.getCategoryById(selectedMainId);
       return mainCategory?.name || '选择子分类';
     }
     if (currentLevel === 3) {
-      const subCategory = problemCategoryService.getCategoryById(selectedSubId);
+      const subCategory = SimpleProblemCategoryService.getCategoryById(selectedSubId);
       return subCategory?.name || '选择具体问题';
     }
     return title;
@@ -152,12 +159,12 @@ export const ProblemCategoryPicker: React.FC<ProblemCategoryPickerProps> = ({
     const path: string[] = [];
     
     if (selectedMainId) {
-      const mainCategory = problemCategoryService.getCategoryById(selectedMainId);
+      const mainCategory = SimpleProblemCategoryService.getCategoryById(selectedMainId);
       if (mainCategory) path.push(mainCategory.name);
     }
     
     if (selectedSubId) {
-      const subCategory = problemCategoryService.getCategoryById(selectedSubId);
+      const subCategory = SimpleProblemCategoryService.getCategoryById(selectedSubId);
       if (subCategory) path.push(subCategory.name);
     }
 

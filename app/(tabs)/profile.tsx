@@ -18,7 +18,7 @@ import AttendanceService from '@/utils/AttendanceService';
 import OptimizedApiService from '@/utils/OptimizedApiService';
 
 export default function ProfileScreen() {
-  const { setIsLoggedIn, currentUser, workOrders, statsRefreshTrigger } = useAppContext();
+  const { setIsLoggedIn, currentUser, workOrders, statsRefreshTrigger, logoutUser } = useAppContext();
   const insets = useSafeAreaInsets();
   const [attendanceStatus, setAttendanceStatus] = useState<'checked_in' | 'checked_out' | 'on_patrol'>('checked_out');
   const [isLoading, setIsLoading] = useState(false);
@@ -111,9 +111,19 @@ export default function ProfileScreen() {
         { text: '取消', style: 'cancel' },
         {
           text: '确定',
-          onPress: () => {
-            setIsLoggedIn(false);
-            router.replace('/login');
+          onPress: async () => {
+            try {
+              // 使用AppContext中的logoutUser方法
+              const success = await logoutUser();
+              if (success) {
+                router.replace('/login');
+              } else {
+                Alert.alert('错误', '退出登录失败，请重试');
+              }
+            } catch (error) {
+              console.error('Logout error:', error);
+              Alert.alert('错误', '退出登录失败，请重试');
+            }
           },
         },
       ]

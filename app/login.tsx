@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
@@ -15,6 +14,7 @@ import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppStatusBar, StatusBarConfigs } from '@/components/AppStatusBar';
+import { Toast, ToastContainer } from '@/components/CustomToast';
 
 import { useAppContext } from '@/contexts/AppContext';
 
@@ -40,7 +40,11 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!username || !password) {
-      Alert.alert('提示', '请输入用户名和密码');
+      Toast.show({
+        message: '请输入用户名和密码',
+        type: 'warning',
+        duration: 2000,
+      });
       return;
     }
 
@@ -58,16 +62,33 @@ export default function LoginScreen() {
         // 保存登录信息到本地存储
         await AsyncStorage.setItem('loginInfo', JSON.stringify(loginInfo));
         
-        // 直接跳转，不显示成功弹窗
-        router.replace('/(tabs)');
+        // 显示成功提示
+        Toast.show({
+          message: '登录成功，正在进入系统...',
+          type: 'success',
+          duration: 1500,
+        });
+        
+        // 延迟跳转，让用户看到成功提示
+        setTimeout(() => {
+          router.replace('/(tabs)');
+        }, 800);
       } else {
         // 错误信息已经在loginWithBackend中设置
         const errorMessage = error?.message || '登录失败，请检查用户名和密码';
-        Alert.alert('登录失败', errorMessage);
+        Toast.show({
+          message: errorMessage,
+          type: 'error',
+          duration: 3000,
+        });
       }
     } catch (err) {
       console.error('Login error:', err);
-      Alert.alert('登录失败', '网络连接异常，请稍后重试');
+      Toast.show({
+        message: '网络连接异常，请稍后重试',
+        type: 'error',
+        duration: 3000,
+      });
     }
   };
 
@@ -155,6 +176,7 @@ export default function LoginScreen() {
           </View>
         )}
       </LinearGradient>
+      <ToastContainer />
     </View>
   );
 }

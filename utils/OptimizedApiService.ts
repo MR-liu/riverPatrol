@@ -624,14 +624,25 @@ class OptimizedApiService {
   }
 
   /**
-   * 获取问题分类
+   * 获取问题分类 - 使用 SupabaseService
    */
   static async getProblemCategories(level?: number, parent?: string): Promise<any> {
-    const queryParams = new URLSearchParams();
-    if (level) queryParams.append('level', level.toString());
-    if (parent) queryParams.append('parent', parent);
-
-    return await this.request(`/get-problem-categories?${queryParams.toString()}`);
+    // 导入 SupabaseService
+    const SupabaseService = require('./SupabaseService').default;
+    
+    try {
+      const result = await SupabaseService.getProblemCategories();
+      return {
+        success: true,
+        data: result.data
+      };
+    } catch (error) {
+      console.error('[OptimizedApiService] 获取问题分类失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '获取问题分类失败'
+      };
+    }
   }
 
   /**

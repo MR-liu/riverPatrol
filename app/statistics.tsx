@@ -12,10 +12,30 @@ import { router } from 'expo-router';
 
 import { useAppContext } from '@/contexts/AppContext';
 import { PageContainer } from '@/components/PageContainer';
-import LocationService from '@/utils/LocationService';
-import AttendanceService from '@/utils/AttendanceService';
-import FileUploadService from '@/utils/FileUploadService';
-import problemCategoryService from '@/utils/ProblemCategoryService';
+import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
+
+// Mock 服务数据
+const MockStats = {
+  attendance: {
+    totalDays: 20,
+    totalHours: 160,
+    averageHours: 8,
+    currentMonthDays: 15,
+    currentMonthHours: 120,
+  },
+  location: {
+    totalDistance: 125.5,
+    totalDuration: 45000,
+    routeCount: 15,
+    averageSpeed: 2.8,
+  },
+  upload: {
+    totalFiles: 48,
+    totalSize: 256000000,
+    imageCount: 36,
+    videoCount: 12,
+  }
+};
 
 export default function StatisticsScreen() {
   const { workOrders, currentUser, statsRefreshTrigger } = useAppContext();
@@ -71,14 +91,29 @@ export default function StatisticsScreen() {
       // 热点区域（模拟数据）
       const topLocations = generateTopLocations();
 
-      // 考勤统计
-      const attendanceStats = await AttendanceService.getAttendanceStats(currentUser?.username || '');
+      // 使用 Mock 数据代替服务调用
+      const attendanceStats = {
+        totalCheckIns: MockStats.attendance.currentMonthDays,
+        totalWorkTime: MockStats.attendance.currentMonthHours * 3600000, // 转换为毫秒
+        punctualityRate: 95,
+        currentStatus: 'checked_out' as any,
+      };
       
       // 轨迹统计
-      const trackStats = await LocationService.getTrackStats();
+      const trackStats = {
+        totalTracks: MockStats.location.routeCount,
+        totalDistance: MockStats.location.totalDistance,
+        totalDuration: MockStats.location.totalDuration,
+        averageSpeed: MockStats.location.averageSpeed,
+      };
       
       // 文件上传统计
-      const uploadStats = await FileUploadService.getUploadStats();
+      const uploadStats = {
+        totalFiles: MockStats.upload.totalFiles,
+        completedFiles: MockStats.upload.totalFiles - 5,
+        failedFiles: 2,
+        pendingFiles: 3,
+      };
 
       setStatsData({
         overview: {
@@ -106,18 +141,18 @@ export default function StatisticsScreen() {
 
   const calculateCategoryStats = (orders: any[]) => {
     // 获取所有主要分类
-    const mainCategories = problemCategoryService.getMainCategories();
+    const mainCategories = SimpleProblemCategoryService.getMainCategories();
     const colors = ['#EF4444', '#3B82F6', '#F59E0B', '#10B981'];
     
     return mainCategories.map((category, index) => {
       // 获取该主分类下的所有子分类和具体问题
-      const subCategories = problemCategoryService.getSubCategories(category.id);
+      const subCategories = SimpleProblemCategoryService.getSubCategories(category.id);
       const allSubIds = subCategories.map(sub => sub.id);
       
       // 获取所有三级分类ID
       const detailIds: string[] = [];
       subCategories.forEach(sub => {
-        const details = problemCategoryService.getDetailCategories(sub.id);
+        const details = SimpleProblemCategoryService.getDetailCategories(sub.id);
         detailIds.push(...details.map(detail => detail.id));
       });
       
@@ -162,15 +197,22 @@ export default function StatisticsScreen() {
   };
 
   const formatWorkTime = (milliseconds: number) => {
-    return AttendanceService.formatWorkTime(milliseconds);
+    const hours = Math.floor(milliseconds / 3600000);
+    const minutes = Math.floor((milliseconds % 3600000) / 60000);
+    return `${hours}小时${minutes}分钟`;
   };
 
   const formatDistance = (distance: number) => {
-    return LocationService.formatDistance(distance);
+    if (distance < 1) {
+      return `${Math.round(distance * 1000)}米`;
+    }
+    return `${distance.toFixed(2)}公里`;
   };
 
   const formatDuration = (duration: number) => {
-    return LocationService.formatDuration(duration);
+    const hours = Math.floor(duration / 3600);
+    const minutes = Math.floor((duration % 3600) / 60);
+    return `${hours}小时${minutes}分钟`;
   };
 
   const getStatusText = (status: string) => {

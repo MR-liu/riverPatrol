@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import { useAppContext } from '@/contexts/AppContext';
 import { PageContainer } from '@/components/PageContainer';
 import SettingsService, { UserSettings } from '@/utils/SettingsService';
+import JPushService from '@/utils/JPushService';
 
 export default function EnhancedSettingsScreen() {
   const {
@@ -25,7 +26,17 @@ export default function EnhancedSettingsScreen() {
   } = useAppContext();
 
   const [isLoading, setIsLoading] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
   const settings = userSettings;
+
+  useEffect(() => {
+    checkPushStatus();
+  }, []);
+
+  const checkPushStatus = async () => {
+    const enabled = await JPushService.checkNotificationEnabled();
+    setPushEnabled(enabled);
+  };
 
   const handleSettingChange = async (category: string, setting: string, value: boolean | string | number) => {
     const success = await SettingsService.updateSetting(category as keyof UserSettings, setting, value);
@@ -99,6 +110,26 @@ export default function EnhancedSettingsScreen() {
               <Text style={styles.cardTitle}>通知设置</Text>
             </View>
             {renderSettingItem(
+              '推送通知',
+              pushEnabled ? '推送通知已启用' : '点击开启推送通知',
+              pushEnabled,
+              async (value) => {
+                if (value && !pushEnabled) {
+                  // 打开系统设置
+                  JPushService.openNotificationSettings();
+                  Alert.alert(
+                    '开启推送',
+                    '请在系统设置中开启推送通知权限',
+                    [{ text: '知道了' }]
+                  );
+                } else if (!value && pushEnabled) {
+                  // 停止推送
+                  JPushService.stopPush();
+                  setPushEnabled(false);
+                }
+              }
+            )}
+            {renderSettingItem(
               '工单更新通知',
               '接收工单状态变更推送',
               settings.notifications.workOrderUpdates,
@@ -109,6 +140,12 @@ export default function EnhancedSettingsScreen() {
               '接收系统重要消息',
               settings.notifications.systemMessages,
               (value) => handleSettingChange('notifications', 'systemMessages', value)
+            )}
+            {renderSettingItem(
+              '提醒通知',
+              '接收任务提醒和预警',
+              settings.notifications.reminderAlerts,
+              (value) => handleSettingChange('notifications', 'reminderAlerts', value)
             )}
           </View>
 
