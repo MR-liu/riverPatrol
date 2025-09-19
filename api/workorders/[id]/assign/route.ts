@@ -62,24 +62,32 @@ export async function PUT(
       return errorResponse('该工单状态不允许重新分配', 400)
     }
     
-    // 权限检查
-    // R001(ADMIN) 和 R002(MONITOR_MANAGER) 可以分配所有工单
-    // R006(MAINTENANCE_SUPERVISOR) 只能分配自己负责区域的工单
-    if (decoded.roleCode === 'MAINTENANCE_SUPERVISOR') {
-      // 检查是否是该区域的主管
-      const { data: supervisorArea } = await supabase
-        .from('river_management_areas')
-        .select('id')
-        .eq('supervisor_id', decoded.userId)
-        .eq('id', workorder.area_id)
-        .single()
-      
-      if (!supervisorArea) {
-        return errorResponse('只能分配自己负责区域的工单', 403)
+    // 权限控制：超级管理员不设限，区域管理员只能分配自己区域的工单
+    const isAdmin = decoded.userId === 'USER_ADMIN' || 
+                    decoded.username === 'admin' || 
+                    ['ADMIN', 'admin', 'R001'].includes(decoded.roleCode)
+    
+    if (!isAdmin) {
+      // 权限检查
+      // R002(MONITOR_MANAGER) 可以分配所有工单
+      // R006(MAINTENANCE_SUPERVISOR) 只能分配自己负责区域的工单
+      if (decoded.roleCode === 'MAINTENANCE_SUPERVISOR' || decoded.roleCode === 'R006') {
+        // 检查是否是该区域的主管
+        const { data: supervisorArea } = await supabase
+          .from('river_management_areas')
+          .select('id')
+          .eq('supervisor_id', decoded.userId)
+          .eq('id', workorder.area_id)
+          .single()
+        
+        if (!supervisorArea) {
+          return errorResponse('只能分配自己负责区域的工单', 403)
+        }
+      } else if (!['MONITOR_MANAGER', 'monitor_manager', 'R002'].includes(decoded.roleCode)) {
+        return errorResponse('无权限分配工单', 403)
       }
-    } else if (!['ADMIN', 'MONITOR_MANAGER'].includes(decoded.roleCode)) {
-      return errorResponse('无权限分配工单', 403)
     }
+    // 超级管理员可以分配所有工单
     
     // 验证被分配人存在
     const { data: assignee, error: assigneeError } = await supabase

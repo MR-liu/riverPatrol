@@ -188,7 +188,9 @@ export async function POST(request: NextRequest) {
     }
     
     // 只有管理员和主管可以创建监控点
-    if (decoded.roleCode !== 'ADMIN' && decoded.roleCode !== 'MONITOR_MANAGER') {
+    // 支持多种角色代码格式
+    const allowedRoles = ['ADMIN', 'admin', 'R001', 'MONITOR_MANAGER', 'R002']
+    if (!allowedRoles.includes(decoded.roleCode) && !allowedRoles.includes(decoded.roleId)) {
       return errorResponse('无权限创建监控点', 403)
     }
     

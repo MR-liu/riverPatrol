@@ -9,13 +9,14 @@ import {
   Alert,
   Switch,
   TextInput,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { useAppContext } from '@/contexts/AppContext';
-import PhotoPicker from '@/components/PhotoPicker';
+import ImagePickerModal from '@/components/ImagePickerModal';
 import LocationService from '@/utils/LocationService';
 import WorkOrderApiService from '@/utils/WorkOrderApiService';
 
@@ -26,8 +27,8 @@ export default function ProcessResultScreen() {
   const [result, setResult] = useState('');
   const [needFollowUp, setNeedFollowUp] = useState(false);
   const [followUpReason, setFollowUpReason] = useState('');
-  const [beforePhotos, setBeforePhotos] = useState<string[]>([]);
-  const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [showImagePicker, setShowImagePicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
@@ -36,8 +37,8 @@ export default function ProcessResultScreen() {
       return;
     }
 
-    if (beforePhotos.length === 0 || afterPhotos.length === 0) {
-      Alert.alert('提示', '请上传处理前后的对比照片');
+    if (photos.length === 0) {
+      Alert.alert('提示', '请上传现场处理照片');
       return;
     }
 
@@ -57,50 +58,48 @@ export default function ProcessResultScreen() {
       // 停止轨迹记录
       const completedTrack = await LocationService.stopPatrolTrack(`工单${selectedWorkOrder.id}处理完成`);
 
-      // 上传照片到服务器
-      Alert.alert('上传中', '正在上传照片，请稍候...');
-      
-      const uploadedBeforePhotos = await WorkOrderApiService.uploadMultiplePhotos(
-        beforePhotos.map(uri => ({ uri, name: 'before.jpg', type: 'image/jpeg' })),
-        selectedWorkOrder.id,
-        'result_photo'
-      );
-
-      const uploadedAfterPhotos = await WorkOrderApiService.uploadMultiplePhotos(
-        afterPhotos.map(uri => ({ uri, name: 'after.jpg', type: 'image/jpeg' })),
-        selectedWorkOrder.id,
-        'result_photo'
-      );
+      // 照片已经在选择时上传，这里直接使用URL
 
       // 获取当前位置信息
-      const locationInfo = await LocationService.getCurrentLocation();
+      const locationInfo = await LocationService.getCurrentPosition();
+      let locationAddress = '未知位置';
+      
+      if (locationInfo) {
+        // 获取地址信息
+        locationAddress = await LocationService.getAddressFromCoords(
+          locationInfo.coords.latitude,
+          locationInfo.coords.longitude
+        );
+      }
 
       // 提交处理结果到服务器
       Alert.alert('提交中', '正在保存处理结果到服务器...');
       
-      const submitData = {
-        workorder_id: selectedWorkOrder.id,
-        process_method: processMethod,
-        process_result: `${result}${needFollowUp ? ' (需要跟进: ' + followUpReason + ')' : ''}`,
-        before_photos: uploadedBeforePhotos,
-        after_photos: uploadedAfterPhotos,
-        need_followup: needFollowUp,
-        followup_reason: needFollowUp ? followUpReason : undefined,
-        location_info: locationInfo ? {
-          latitude: locationInfo.latitude,
-          longitude: locationInfo.longitude,
-          address: locationInfo.address,
-        } : undefined,
-      };
+      // 构建处理结果描述
+      const fullProcessResult = `
+处理方法: ${processMethod}
+处理描述: ${processDescription}
+处理结果: ${result}
+${needFollowUp ? `需要跟进: ${followUpReason}` : ''}
+处理位置: ${locationAddress}
+      `.trim();
 
-      const response = await WorkOrderApiService.submitWorkOrderResult(submitData);
+      // 使用新的API方法提交
+      const response = await WorkOrderApiService.submitResult(
+        selectedWorkOrder.id,
+        fullProcessResult,
+        photos,
+        `工单处理完成 - ${result}`
+      );
 
       if (response.success) {
-        // 更新本地工单状态
-        const newStatus = needFollowUp ? '待审核' : '已完成';
+        // 更新本地工单状态 - 提交后变为待审核状态
+        const newStatus = 'pending_review'; // 提交后都需要审核
         const updatedWorkOrder = {
           ...selectedWorkOrder,
           status: newStatus,
+          processing_images: photos,
+          processing_notes: fullProcessResult,
           updated_at: new Date().toISOString(),
         };
 
@@ -138,8 +137,7 @@ export default function ProcessResultScreen() {
     setResult('');
     setNeedFollowUp(false);
     setFollowUpReason('');
-    setBeforePhotos([]);
-    setAfterPhotos([]);
+    setPhotos([]);
   };
 
 
@@ -266,28 +264,28 @@ export default function ProcessResultScreen() {
             </View>
           </View>
 
-          {/* 处理前后照片 */}
+          {/* 现场照片 */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <MaterialIcons name="camera-alt" size={20} color="#3B82F6" />
-              <Text style={styles.cardTitle}>处理前后对比照片</Text>
+              <Text style={styles.cardTitle}>现场处理照片</Text>
             </View>
             
-            <PhotoPicker
-              title="处理前照片"
-              photos={beforePhotos}
-              onPhotosChange={setBeforePhotos}
-              maxPhotos={3}
-              required={true}
-            />
-
-            <PhotoPicker
-              title="处理后照片"
-              photos={afterPhotos}
-              onPhotosChange={setAfterPhotos}
-              maxPhotos={3}
-              required={true}
-            />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.photoContainer}>
+                {photos.map((uri, index) => (
+                  <Image key={index} source={{ uri }} style={styles.photoThumb} />
+                ))}
+                <TouchableOpacity
+                  style={styles.addPhotoButton}
+                  onPress={() => setShowImagePicker(true)}
+                >
+                  <MaterialIcons name="add-a-photo" size={32} color="#3B82F6" />
+                  <Text style={styles.addPhotoText}>添加照片</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+            <Text style={styles.photoHint}>已上传 {photos.length} 张照片（建议3-9张）</Text>
           </View>
 
           {/* 后续跟进 */}
@@ -329,12 +327,21 @@ export default function ProcessResultScreen() {
               colors={['#10B981', '#059669']}
               style={styles.submitButtonGradient}
             >
-              <MaterialIcons name="check" size={20} color="#FFFFFF" />
-              <Text style={styles.submitButtonText}>提交处理结果</Text>
+              <MaterialIcons name="cloud-upload" size={20} color="#FFFFFF" />
+              <Text style={styles.submitButtonText}>处理完毕</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
       </LinearGradient>
+
+      {/* 图片选择器 */}
+      <ImagePickerModal
+        visible={showImagePicker}
+        onClose={() => setShowImagePicker(false)}
+        onImagesSelected={setPhotos}
+        maxImages={9}
+        existingImages={photos}
+      />
     </SafeAreaView>
   );
 }
@@ -522,5 +529,37 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  photoContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 10,
+  },
+  photoThumb: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  addPhotoButton: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#3B82F6',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  addPhotoText: {
+    fontSize: 12,
+    color: '#3B82F6',
+    marginTop: 4,
+  },
+  photoHint: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 8,
   },
 });

@@ -92,23 +92,24 @@ async function getUserArea(supabase: any, userId: string, roleId: string): Promi
       case 'R003': // 河道维护员
       case 'R004': // 河道巡检员
         const { data: workerTeam } = await supabase
-          .from('maintenance_teams')
+          .from('team_members')
           .select(`
-            area_id,
-            river_management_areas!inner(
-              id,
-              name,
-              code
+            team:maintenance_teams!inner(
+              area_id,
+              river_management_areas!maintenance_teams_area_id_fkey(
+                id,
+                name,
+                code
+              )
             )
           `)
-          .eq('worker_id', userId)
-          .eq('status', 'active')
+          .eq('user_id', userId)
           .single();
         
-        if (workerTeam && workerTeam.river_management_areas) {
-          areaId = workerTeam.river_management_areas.id;
-          areaName = workerTeam.river_management_areas.name;
-          areaCode = workerTeam.river_management_areas.code;
+        if (workerTeam && workerTeam.team && workerTeam.team.river_management_areas) {
+          areaId = workerTeam.team.river_management_areas.id;
+          areaName = workerTeam.team.river_management_areas.name;
+          areaCode = workerTeam.team.river_management_areas.code;
           console.log(`[MobileLogin] 员工 ${userId} 所属区域: ${areaName}(${areaId})`);
         }
         break;

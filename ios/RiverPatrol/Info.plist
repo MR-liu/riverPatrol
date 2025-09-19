@@ -31,15 +31,15 @@
           <string>com.riverpatrol.app</string>
         </array>
       </dict>
-      <dict>
-        <key>CFBundleURLSchemes</key>
-        <array>
-          <string>exp+riverpatrol</string>
-        </array>
-      </dict>
     </array>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>JPushAppKey</key>
+    <string>463f52032571434a7a2ddeee</string>
+    <key>JPushChannel</key>
+    <string>default</string>
+    <key>JPushProduction</key>
+    <false/>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSRequiresIPhoneOS</key>
@@ -66,6 +66,13 @@
     <key>NSUserActivityTypes</key>
     <array>
       <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>
+    </array>
+    <key>NSUserNotificationUsageDescription</key>
+    <string>应用需要推送权限来接收重要通知</string>
+    <key>UIBackgroundModes</key>
+    <array>
+      <string>remote-notification</string>
+      <string>fetch</string>
     </array>
     <key>UILaunchStoryboardName</key>
     <string>SplashScreen</string>

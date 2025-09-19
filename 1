@@ -16,6 +16,87 @@ lsof -i tcp:8081
 
 我们的整体逻辑是，我们有多个区域，是管理后台新增的。每个区域有一个区域管理，区域管理负责确认告警转工单，维护员完成之后返给区域管理确认，区域管理可以打回也可以确认，确认的话可以由监控中心或者管理员完单。
 
+我们使用nextjs后端的api作为中转我们的接口.我从后端服务拷贝了api文件夹到我们根目录下.里面的app-开头的接口文件就是我们要用的.我们如果要新增或者修改接口文件需要我拷贝走部署才能生效.现在阅读这些app-的接口
+
+maintain02
+
+# Android真机测试
+npx expo run:android --device
+
+# iOS真机测试（需要开发者账号）
+npx expo run:ios --device
+
+
+curl -X POST http://127.0.0.1:3000/api/app-auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "patrol01",
+    "password": "password",
+    "remember_me": true,
+    "device_info": {
+      "platform": "mobile",
+      "model": "Android",
+      "version": "1.0.0"
+    }
+  }' | python3 -m json.tool
+
+  TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJVX1IwMDRfMDEiLCJ1c2VybmFtZSI6InBhdHJvbDAxIiwicm9sZUlkIjoiUjAwNCIsInJvbGVDb2RlIjoiUjAwNCIsImFyZWFJZCI6bnVsbCwicGxhdGZvcm0iOiJtb2JpbGUiLCJpYXQiOjE3NTgxNDYzMDIsImV4cCI6MTc2MDczODMwMn0.Ra_PP7XRA6kG25ncci1AsEBmwhF_tUVsj0VGeajt3kQ"
+
+  curl -X POST http://127.0.0.1:3000/api/app-problem-report \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "东一河发现大量塑料瓶漂浮",
+    "description": "巡检时发现东一河中游段有大量塑料瓶和生活垃圾漂浮，影响河道景观，需要及时清理",
+    "category": "AT010",
+    "selectedItems": ["垃圾污染", "河道漂浮物"],
+    "location": {
+      "address": "东一河中游段，靠近东河桥200米处",
+      "coordinates": {
+        "latitude": 31.235,
+        "longitude": 121.475
+      }
+    },
+    "priority": "紧急",
+    "photos": [
+      "https://cdn.chengyishi.com/riverpatrol/river/2025/09/16/1-0_1757989268239_b65652bd.jpg",
+      "https://cdn.chengyishi.com/riverpatrol/river/2025/09/16/2-0_1757989268945_b8ab7ebb.jpg",
+      "https://cdn.chengyishi.com/riverpatrol/river/2025/09/16/3-1_1757989272845_f422414c.jpg"
+    ],
+    "reporterInfo": {
+      "name": "钱巡检",
+      "phone": "13800004001"
+    }
+  }' | python3 -m json.tool
+
+
+-- 监控中心主管（R002）- 2名
+('U_R002_01', 'monitor01', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '张监控', 'zhangjiankong@monitor.com', '13800002001', 'DEPT_002', 'R002', 'active'),
+('U_R002_02', 'monitor02', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '李监控', 'lijiankong@monitor.com', '13800002002', 'DEPT_002', 'R002', 'active'),
+
+-- 河道维护员（R003）- 4名
+('U_R003_01', 'maintain01', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '王维护', 'wangweihu@maintain.com', '13800003001', 'DEPT_003', 'R003', 'active'),
+('U_R003_02', 'maintain02', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '赵维护', 'zhaoweihu@maintain.com', '13800003002', 'DEPT_003', 'R003', 'active'),
+('U_R003_03', 'maintain03', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '孙维护', 'sunweihu@maintain.com', '13800003003', 'DEPT_004', 'R003', 'active'),
+('U_R003_04', 'maintain04', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '周维护', 'zhouweihu@maintain.com', '13800003004', 'DEPT_004', 'R003', 'active'),
+
+-- 河道巡检员（R004）- 3名
+('U_R004_01', 'patrol01', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '钱巡检', 'qianxunjian@patrol.com', '13800004001', 'DEPT_005', 'R004', 'active'),
+('U_R004_02', 'patrol02', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '吴巡检', 'wuxunjian@patrol.com', '13800004002', 'DEPT_005', 'R004', 'active'),
+('U_R004_03', 'patrol03', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '郑巡检', 'zhengxunjian@patrol.com', '13800004003', 'DEPT_005', 'R004', 'active'),
+
+-- 领导看板用户（R005）- 2名
+('U_R005_01', 'leader01', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '刘领导', 'liulingdao@leader.com', '13800005001', 'DEPT_001', 'R005', 'active'),
+('U_R005_02', 'leader02', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '张领导', 'zhanglingdao@leader.com', '13800005002', 'DEPT_001', 'R005', 'active'),
+
+-- 区域管理员（R006）- 2名
+('U_R006_01', 'area01', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '陈区域', 'chenquyu@area.com', '13800006001', 'DEPT_003', 'R006', 'active'),
+('U_R006_02', 'area02', '9dfb6c0fe2cb6776ba923ccd7e23b6a77ab88bd38e9a34d774dd30db146e66ef', '冯区域', 'fengquyu@area.com', '13800006002', 'DEPT_004', 'R006', 'active')
+
+
+  1. workorders 表有 images 和 videos 字段用于存储原始工单的图片/视频
+  2. workorder_results 表有 before_images 和 after_images 字段用于存储处理前后的图片
+  3. workorder_status_history 表记录状态变更历史
 
 人工单子生成：                                                                                                                
                                                                                                                                  
@@ -51,3 +132,61 @@ lsof -i tcp:8081
         ↓                                                                                                                        
      7. R006审核工单完成情况                                                                                                     
                                              
+
+
+单文件
+单文件上传：
+curl -X POST https://u.chengyishi.com/upload \
+  -F "file=@/path/to/your/file.jpg" \
+  -H "Accept: application/json"
+
+返回:
+{
+    "success": true,
+    "message": "文件上传成功",
+    "data": {
+        "url": "https://cdn.chengyishi.com/riverpatrol/river/2025/09/14/8-1_1757869064435_4ccde37b.jpg",
+        "path": "river/2025/09/14/8-1_1757869064435_4ccde37b.jpg",
+        "size": 98464,
+        "mimetype": "image/jpeg",
+        "originalName": "8-1.jpg"
+    }
+}
+
+多文件上传
+curl -X POST https://u.chengyishi.com/upload/multiple \
+  -F "files=@/path/to/file1.jpg" \
+  -F "files=@/path/to/file2.png" \
+  -F "files=@/path/to/file3.pdf"
+
+返回
+{
+    "success": true,
+    "message": "上传完成: 成功 3 个, 失败 0 个",
+    "data": {
+        "succeeded": [
+            {
+                "url": "https://cdn.chengyishi.com/riverpatrol/river/2025/09/14/3-1_1757869126412_7dbf3ab8.jpg",
+                "path": "river/2025/09/14/3-1_1757869126412_7dbf3ab8.jpg",
+                "size": 95998,
+                "mimetype": "image/jpeg",
+                "originalName": "3-1.jpg"
+            },
+            {
+                "url": "https://cdn.chengyishi.com/riverpatrol/river/2025/09/14/4-1_1757869127015_7baaa322.jpg",
+                "path": "river/2025/09/14/4-1_1757869127015_7baaa322.jpg",
+                "size": 106262,
+                "mimetype": "image/jpeg",
+                "originalName": "4-1.jpg"
+            },
+            {
+                "url": "https://cdn.chengyishi.com/riverpatrol/river/2025/09/14/5-0_1757869127680_93ac2ed8.jpg",
+                "path": "river/2025/09/14/5-0_1757869127680_93ac2ed8.jpg",
+                "size": 108260,
+                "mimetype": "image/jpeg",
+                "originalName": "5-0.jpg"
+            }
+        ],
+        "failed": []
+    }
+}

@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     // 验证工单类型是否存在
     const { data: workorderType, error: typeError } = await supabase
       .from('workorder_types')
-      .select('id, name, category, default_priority')
+      .select('id, name, category, priority_default')  // 使用priority_default，不是default_priority
       .eq('id', workorder_type_id)
       .single()
 
@@ -113,38 +113,40 @@ export async function POST(request: NextRequest) {
     // 验证区域是否存在并获取区域信息
     const { data: area, error: areaError } = await supabase
       .from('river_management_areas')
-      .select('id, name, supervisor_id, default_team_id')
+      .select('id, name, supervisor_id, maintenance_team_id') // 使用maintenance_team_id
       .eq('id', area_id)
-      .eq('is_active', true)
+      .eq('status', 'active') // 使用status字段，不是is_active
       .single()
 
     if (areaError || !area) {
       return errorResponse('区域不存在或已停用', 404)
     }
 
-    // 生成工单ID
-    const workorderId = `WO_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    // 生成工单ID - 限制在30字符以内
+    const timestamp = Date.now().toString().slice(-10)
+    const random = Math.random().toString(36).substr(2, 5).toUpperCase()
+    const workorderId = `WO_${timestamp}_${random}` // 总长度: 3 + 10 + 1 + 5 = 19
     
     // 创建工单
     const { data: workorder, error: createError } = await supabase
       .from('workorders')
       .insert({
         id: workorderId,
+        type_id: workorder_type_id, // 使用type_id，不是workorder_type_id
         title,
         description,
-        workorder_type_id,
-        priority: priority || workorderType.default_priority || 'normal',
+        priority: priority || workorderType.priority_default || 'normal',
         status: 'pending_dispatch', // 人工工单初始状态为待分派
         workorder_source: 'manual', // 标记为人工创建
         area_id,
-        location: JSON.stringify(location),
-        photos: JSON.stringify(photos),
-        estimated_severity,
-        notes,
-        device_id,
+        location: location?.address || '未知位置', // location是字符串，不是JSON
+        coordinates: location ? { lat: location.lat, lng: location.lng } : null, // coordinates是JSONB
+        images: photos || [], // 使用images字段，JSONB类型
+        source: notes || '巡检发现', // 来源说明
         creator_id: userId,
         initial_reporter_id: userId, // 记录最初发起人
         department_id: null, // 人工工单暂不分配部门
+        point_id: device_id || null, // 可选，监控点ID
         created_at: now,
         updated_at: now
       })

@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
+import ProblemCategoryService from '@/utils/ProblemCategoryService';
 
 // 定义CategoryOption类型
 interface CategoryOption {
@@ -53,8 +53,12 @@ export const ProblemCategoryPicker: React.FC<ProblemCategoryPickerProps> = ({
   }, [visible]);
 
   const loadMainCategories = () => {
-    const categories = SimpleProblemCategoryService.getMainCategories();
-    setMainCategories(categories);
+    const categories = ProblemCategoryService.getCategories();
+    const mainCats = categories.map(cat => ({
+      id: cat.id,
+      name: cat.name,
+    }));
+    setMainCategories(mainCats);
   };
 
   const resetSelection = () => {

@@ -81,7 +81,14 @@ export async function GET(request: NextRequest) {
         creator:users!workorders_creator_id_fkey(id, name, username),
         assignee:users!workorders_assignee_id_fkey(id, name, username),
         area:river_management_areas(id, name, code),
-        department:departments(id, name, code)
+        department:departments(id, name, code),
+        results:workorder_results(
+          id,
+          description,
+          before_images,
+          after_images,
+          created_at
+        )
       `, { count: 'exact' })
 
     // 根据角色应用数据权限过滤
@@ -203,10 +210,15 @@ export async function GET(request: NextRequest) {
       expectedCompleteAt: wo.expected_complete_at,
       
       // 其他信息
+      images: wo.images || [],  // 添加图片字段
+      videos: wo.videos || [],  // 添加视频字段
+      results: wo.results || [],  // 处理结果
       source: wo.source,
       isResubmit: wo.is_resubmit,
       estimatedCost: wo.estimated_cost,
-      slaStatus: wo.sla_status
+      slaStatus: wo.sla_status,
+      workOrderSource: wo.workorder_source,  // 工单来源
+      coordinates: wo.coordinates  // 坐标信息
     })) || []
 
     // 记录 API 活动
@@ -329,13 +341,14 @@ export async function POST(request: NextRequest) {
     }
 
     // 记录工单状态历史
+    const historyId = `WSH_${Date.now().toString().slice(-8)}` // 长度: 4 + 8 = 12
     await supabase
       .from('workorder_status_history')
       .insert({
-        id: `WSH_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: historyId,
         workorder_id: workOrderId,
-        old_status: null,
-        new_status: 'pending',
+        from_status: null,     // 使用正确的字段名
+        to_status: 'pending',  // 使用正确的字段名
         changed_by: userId,
         change_reason: '创建工单',
         created_at: now.toISOString()

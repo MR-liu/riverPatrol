@@ -63,9 +63,9 @@ export async function GET(request: NextRequest) {
       `)
       .order('created_at', { ascending: false })
     
-    // 按角色筛选
+    // 获取角色ID（如果指定了角色过滤）
+    let targetRoleId = null
     if (roleCode) {
-      // 先获取角色ID
       const { data: role } = await supabase
         .from('roles')
         .select('id')
@@ -73,6 +73,7 @@ export async function GET(request: NextRequest) {
         .single()
       
       if (role) {
+        targetRoleId = role.id
         query = query.eq('role_id', role.id)
       }
     }
@@ -88,8 +89,10 @@ export async function GET(request: NextRequest) {
     }
     
     // R006(维护员主管)权限限制：只能看到自己管辖区域的维护员
-    if (decoded.roleCode === 'MAINTENANCE_SUPERVISOR') {
+    if (decoded.roleCode === 'MAINTENANCE_SUPERVISOR' || decoded.roleCode === 'R006' || decoded.roleId === 'R006') {
       console.log('维护员主管权限限制 - 用户ID:', decoded.userId)
+      console.log('维护员主管权限限制 - 请求角色:', roleCode, '角色ID:', targetRoleId)
+      
       // 获取主管负责的区域
       const { data: supervisorAreas } = await supabase
         .from('river_management_areas')
@@ -105,18 +108,25 @@ export async function GET(request: NextRequest) {
           .select('worker_id')
           .in('area_id', supervisorAreas.map(area => area.id))
         
+        console.log('区域下的团队成员:', teamMembers)
+        
         if (teamMembers && teamMembers.length > 0) {
           const workerIds = teamMembers.map(tm => tm.worker_id)
+          console.log('维护员ID列表:', workerIds)
           query = query.in('id', workerIds)
         } else {
           // 如果没有团队成员，返回空结果
+          console.log('没有找到团队成员，返回空结果')
           query = query.eq('id', 'no-users') // 这会返回空结果
         }
       } else {
         // 如果主管没有负责的区域，返回空结果
+        console.log('主管没有负责的区域，返回空结果')
         query = query.eq('id', 'no-users')
       }
-    } else if (decoded.roleCode === 'ADMIN' || decoded.roleCode === 'MONITOR_MANAGER') {
+    } else if (['ADMIN', 'admin', 'R001'].includes(decoded.roleCode) || 
+               ['MONITOR_MANAGER', 'R002'].includes(decoded.roleCode) || 
+               ['R001', 'R002'].includes(decoded.roleId)) {
       console.log('管理员或监控中心主管，可以查看所有用户')
       // 无需额外限制，可以查看所有用户
     }

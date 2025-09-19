@@ -85,7 +85,6 @@ export async function POST(request: NextRequest) {
         avatar,
         role_id,
         department_id,
-        area_id,
         status,
         login_attempts,
         last_login_attempt,
@@ -93,6 +92,7 @@ export async function POST(request: NextRequest) {
           id,
           name,
           code,
+          role_code,
           description
         ),
         department:departments(
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
       user.id,
       user.username,
       user.role_id,
-      user.role.code,
+      user.role.role_code,  // 使用 role_code (R001-R006)
       expiresIn
     )
 
@@ -225,11 +225,20 @@ export async function POST(request: NextRequest) {
 
     // 7. 设置 Cookie
     const cookieStore = await cookies()
+    
+    // 开发环境调试信息
+    console.log('[Login] Setting cookie:', {
+      name: SESSION_CONFIG.cookieName,
+      maxAge: expiresIn,
+      secure: process.env.NODE_ENV === 'production',
+      env: process.env.NODE_ENV
+    })
+    
     cookieStore.set({
       name: SESSION_CONFIG.cookieName,
       value: token,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: false, // 开发环境也设为false，确保cookie能正确设置
       sameSite: 'lax',
       maxAge: expiresIn,
       path: '/'
@@ -242,42 +251,6 @@ export async function POST(request: NextRequest) {
       remember_me: input.remember_me
     })
 
-    // 8.5 根据用户角色查询管理的区域
-    let userAreaId = user.area_id; // 先尝试从用户表获取（如果有的话）
-    
-    // 对于需要区域权限的角色，查找其管理或所属的区域
-    const roleCode = user.role.code;
-    if (roleCode === 'MAINTENANCE_SUPERVISOR' || roleCode === 'INSPECTOR' || roleCode === 'MAINTAINER') {
-      // 河道维护员主管 - 从river_management_areas表查找
-      if (roleCode === 'MAINTENANCE_SUPERVISOR') {
-        const { data: areaData } = await supabase
-          .from('river_management_areas')
-          .select('id, name')
-          .eq('supervisor_id', user.id)
-          .single();
-        
-        if (areaData) {
-          userAreaId = areaData.id;
-          console.log(`[Login] Found area ${areaData.name}(${userAreaId}) for supervisor ${user.name}`);
-        }
-      }
-      
-      // 河道维护员/巡检员 - 从maintenance_teams表查找
-      if ((roleCode === 'MAINTAINER' || roleCode === 'INSPECTOR') && !userAreaId) {
-        const { data: teamData } = await supabase
-          .from('maintenance_teams')
-          .select('area_id')
-          .eq('worker_id', user.id)
-          .single();
-        
-        if (teamData) {
-          userAreaId = teamData.area_id;
-          const roleType = roleCode === 'MAINTAINER' ? 'maintainer' : 'inspector';
-          console.log(`[Login] Found area ${userAreaId} for ${roleType} ${user.name}`);
-        }
-      }
-    }
-    
     // 9. 返回用户信息
     const responseData = {
       user: {
@@ -288,10 +261,13 @@ export async function POST(request: NextRequest) {
         phone: user.phone,
         avatar: user.avatar,
         role_id: user.role_id,
-        role: user.role,
+        role: {
+          ...user.role,
+          code: user.role.role_code  // 使用 role_code (R001-R006)
+        },
+        role_code: user.role.role_code,  // 直接返回 role_code
         department_id: user.department_id,
         department: user.department,
-        area_id: userAreaId,
         permissions: userPermissions,
         last_login_at: user.last_login_at
       },

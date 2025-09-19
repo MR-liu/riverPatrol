@@ -23,7 +23,8 @@
       "Bash(npx expo run:android:*)",
       "Bash(./gradlew:*)",
       "Bash(npx eas:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(npx expo install:*)"
     ],
     "deny": [],
     "ask": []

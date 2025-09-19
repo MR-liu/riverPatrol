@@ -40,7 +40,9 @@ export async function POST(request: NextRequest) {
     const decoded = jwt.verify(token, JWT_SECRET) as any
     
     // 只有管理员和有用户管理权限的角色可以创建用户
-    if (decoded.roleCode !== 'ADMIN' && decoded.roleCode !== 'MONITOR_MANAGER') {
+    // 支持多种角色代码格式
+    const allowedRoles = ['ADMIN', 'admin', 'R001', 'MONITOR_MANAGER', 'R002']
+    if (!allowedRoles.includes(decoded.roleCode) && !allowedRoles.includes(decoded.roleId)) {
       return errorResponse('无权限创建用户', 403)
     }
     
@@ -69,17 +71,10 @@ export async function POST(request: NextRequest) {
       return errorResponse('用户名已存在', 400)
     }
     
-    // 生成用户ID
-    const { data: lastUser } = await supabase
-      .from('users')
-      .select('id')
-      .order('id', { ascending: false })
-      .limit(1)
-      .single()
-    
-    const lastId = lastUser?.id || 'U000000'
-    const nextNumber = parseInt(lastId.substring(1)) + 1
-    const userId = `U${nextNumber.toString().padStart(6, '0')}`
+    // 生成用户ID - 使用时间戳和随机数确保唯一性
+    const timestamp = Date.now().toString()
+    const randomStr = Math.random().toString(36).substr(2, 4).toUpperCase()
+    const userId = `U_${timestamp.slice(-8)}_${randomStr}`
     
     // 设置密码（默认为 "password" 或用户指定的密码）
     const password = userData.password || 'password'

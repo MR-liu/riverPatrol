@@ -8,8 +8,8 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
-import ProblemCategoryPicker from '@/components/ProblemCategoryPicker';
-import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
+import SimpleProblemCategoryPicker from '@/components/SimpleProblemCategoryPicker';
+import ProblemCategoryService from '@/utils/ProblemCategoryService';
 
 interface CategorySelectorProps {
   selectedCategoryId?: string;
@@ -28,8 +28,9 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
 }) => {
   const [pickerVisible, setPickerVisible] = useState(false);
 
-  const handleCategorySelect = (categoryId: string, categoryName: string, fullPath: string) => {
-    onCategoryChange(categoryId, categoryName, fullPath);
+  const handleCategorySelect = (category: any) => {
+    const fullPath = category.name; // 简化路径，直接使用分类名称
+    onCategoryChange(category.id, category.name, fullPath);
   };
 
   const getDisplayText = () => {
@@ -41,8 +42,8 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
 
   const getDisplaySubText = () => {
     if (selectedCategoryId) {
-      const fullPath = SimpleProblemCategoryService.getCategoryFullName(selectedCategoryId);
-      return fullPath;
+      const category = ProblemCategoryService.getCategoryById(selectedCategoryId);
+      return category?.name || null;
     }
     return null;
   };
@@ -77,7 +78,7 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
         </View>
       </TouchableOpacity>
 
-      <ProblemCategoryPicker
+      <SimpleProblemCategoryPicker
         visible={pickerVisible}
         onClose={() => setPickerVisible(false)}
         onSelect={handleCategorySelect}

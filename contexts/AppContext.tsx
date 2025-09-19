@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
+import ProblemCategoryService from '@/utils/ProblemCategoryService';
 import EnhancedNotificationService, { EnhancedMessage } from '@/utils/EnhancedNotificationService';
 import AuthService from '@/utils/AuthService';
 import SupabaseService from '@/utils/SupabaseService';
 import NewDataAdapter from '@/utils/NewDataAdapter';
 import { getRoleByCode, getRoleDataScope, PERMISSIONS, hasPermission } from '@/constants/newRolePermissions';
+import JPushService from '@/utils/JPushService';
 
 // Supabase配置 - 使用环境变量
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -171,6 +172,15 @@ interface AppContextType {
   getUnreadMessages: () => Promise<EnhancedMessage[]>;
   markMessageAsRead: (messageIds: string[]) => Promise<boolean>;
   syncMessages: () => Promise<boolean>;
+  
+  // 推送相关
+  pushConfig: any;
+  setPushConfig: (config: any) => void;
+  loadPushConfig: () => Promise<void>;
+  savePushConfig: (config: any) => Promise<boolean>;
+  testPushNotification: () => Promise<boolean>;
+  handleRemotePushNotification: (notification: any) => void;
+  handlePushNotificationOpen: (notification: any) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -199,6 +209,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   
   // 统计数据刷新状态
   const [statsRefreshTrigger, setStatsRefreshTrigger] = useState(0);
+  
+  // 推送相关状态
+  const [pushConfig, setPushConfig] = useState({
+    enable_alarm_push: true,
+    enable_workorder_push: true,
+    enable_notification_push: true,
+    enable_inspection_push: true,
+    quiet_hours_start: '22:00',
+    quiet_hours_end: '08:00',
+    min_priority: 'normal',
+  });
 
   // 默认设置
   const defaultSettings = useMemo(() => ({
@@ -495,16 +516,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const uploadFile = useCallback(async (file: any, type: string, relatedId?: string): Promise<string | null> => {
+  const uploadFile = useCallback(async (fileUri: string, type: string = 'problem_report', relatedId?: string): Promise<string | null> => {
     try {
       setIsLoading(true);
       
-      const result = await SupabaseService.uploadFile(file);
+      // 创建 FormData
+      const formData = new FormData();
       
-      if (result.success && result.data) {
-        return result.data;
+      // 从本地文件URI创建文件对象
+      const fileInfo = {
+        uri: fileUri,
+        type: 'image/jpeg', // 默认类型，可以根据文件扩展名动态设置
+        name: `photo_${Date.now()}.jpg` // 生成文件名
+      };
+      
+      // 将文件添加到FormData
+      formData.append('file', fileInfo as any);
+      
+      // 调用统一的上传接口
+      const response = await fetch('https://u.chengyishi.com/upload', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+        },
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`上传失败: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.success && result.data && result.data.url) {
+        console.log('文件上传成功:', result.data.url);
+        return result.data.url;
       } else {
-        throw new Error(result.error || '文件上传失败');
+        throw new Error(result.message || '文件上传失败');
       }
     } catch (error) {
       console.error('Upload file error:', error);
@@ -526,9 +574,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return success;
       }
       
-      // 在线模式，提交到后端
-      const formattedData = NewDataAdapter.buildProblemReportData(reportData);
-      const result = await SupabaseService.createProblemReport(formattedData);
+      // 在线模式，通过Next.js API提交
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) {
+        throw new Error('未登录');
+      }
+
+      const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${API_URL}/api/app-problem-report`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(reportData)
+      });
+
+      const result = await response.json();
       
       if (result.success) {
         // 刷新工单列表
@@ -678,6 +740,122 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const refreshUserStats = useCallback(() => {
     setStatsRefreshTrigger(prev => prev + 1);
   }, []);
+  
+  // 推送相关方法
+  const loadPushConfig = useCallback(async () => {
+    try {
+      const token = await AsyncStorage.getItem('app-auth-token');
+      if (!token) return;
+      
+      const response = await fetch(`${SUPABASE_URL}/api/app-push-config`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setPushConfig(result.data.config);
+      }
+    } catch (error) {
+      console.error('加载推送配置失败:', error);
+    }
+  }, []);
+  
+  const savePushConfig = useCallback(async (config: any): Promise<boolean> => {
+    try {
+      const token = await AsyncStorage.getItem('app-auth-token');
+      if (!token) return false;
+      
+      const response = await fetch(`${SUPABASE_URL}/api/app-push-config`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(config),
+      });
+      
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setPushConfig(config);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('保存推送配置失败:', error);
+      return false;
+    }
+  }, []);
+  
+  const testPushNotification = useCallback(async (): Promise<boolean> => {
+    try {
+      const token = await AsyncStorage.getItem('app-auth-token');
+      if (!token) return false;
+      
+      const response = await fetch(`${SUPABASE_URL}/api/app-push-test`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: '测试推送',
+          content: '这是一条测试推送消息',
+        }),
+      });
+      
+      return response.ok;
+    } catch (error) {
+      console.error('测试推送失败:', error);
+      return false;
+    }
+  }, []);
+  
+  const handleRemotePushNotification = useCallback((notification: any) => {
+    console.log('[AppContext] 收到远程推送:', notification);
+    
+    // 根据推送类型更新相应的数据
+    const extras = notification.extras || {};
+    const { type, target_id } = extras;
+    
+    switch (type) {
+      case 'workorder':
+        // 刷新工单列表
+        loadWorkOrdersFromBackend();
+        break;
+      case 'notification':
+        // 刷新通知列表
+        syncMessages();
+        break;
+      default:
+        break;
+    }
+  }, [loadWorkOrdersFromBackend, syncMessages]);
+  
+  const handlePushNotificationOpen = useCallback((notification: any) => {
+    console.log('[AppContext] 打开推送通知:', notification);
+    
+    // 处理通知点击事件，可以导航到对应页面
+    const extras = notification.extras || {};
+    const { type, target_id } = extras;
+    
+    // TODO: 实现页面导航逻辑
+    switch (type) {
+      case 'workorder':
+        // 导航到工单详情页
+        if (target_id) {
+          // navigation.navigate('WorkOrderDetail', { id: target_id });
+        }
+        break;
+      case 'notification':
+        // 导航到通知列表
+        // navigation.navigate('Notifications');
+        break;
+      default:
+        break;
+    }
+  }, []);
 
   // 在登录成功后加载消息和工单数据
   useEffect(() => {
@@ -690,12 +868,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       getMessages();
       getUnreadMessages();
       
+      // 加载推送配置
+      loadPushConfig();
+      
+      // 注册推送监听
+      const unsubscribeNotification = JPushService.addNotificationListener(handleRemotePushNotification);
+      const unsubscribeOpen = JPushService.addLocalNotificationListener(handlePushNotificationOpen);
+      
       // 设置定期同步
       const syncInterval = setInterval(syncMessages, 30000); // 每30秒同步一次
       
-      return () => clearInterval(syncInterval);
+      return () => {
+        clearInterval(syncInterval);
+        unsubscribeNotification();
+        unsubscribeOpen();
+      };
     }
-  }, [isLoggedIn, currentUser, loadWorkOrdersFromBackend, refreshDashboardStats, getMessages, getUnreadMessages, syncMessages]);
+  }, [isLoggedIn, currentUser, loadWorkOrdersFromBackend, refreshDashboardStats, getMessages, getUnreadMessages, syncMessages, loadPushConfig, handleRemotePushNotification, handlePushNotificationOpen]);
 
   // 初始化数据
   useEffect(() => {
@@ -713,7 +902,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         try {
           // 初始化问题分类服务（设置超时）
           await Promise.race([
-            SimpleProblemCategoryService.initialize(),
+            ProblemCategoryService.initialize(),
             new Promise((_, reject) => setTimeout(() => reject(new Error('问题分类服务初始化超时')), 3000))
           ]);
           console.log('[AppContext] 问题分类服务初始化完成');
@@ -891,6 +1080,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getUnreadMessages,
     markMessageAsRead,
     syncMessages,
+    
+    // 推送相关
+    pushConfig,
+    setPushConfig,
+    loadPushConfig,
+    savePushConfig,
+    testPushNotification,
+    handleRemotePushNotification,
+    handlePushNotificationOpen,
   }), [
     isLoading, isInitializing, error, loginForm, showPassword, isLoggedIn, currentUser,
     workOrders, selectedWorkOrder, workOrderFilter,
@@ -900,7 +1098,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loginWithBackend, logoutUser, loadWorkOrdersFromBackend, refreshDashboardStats,
     uploadFile, submitReport, updateWorkOrderStatus,
     refreshUserStats, statsRefreshTrigger,
-    dashboardStats, messages, unreadCount, getMessages, getUnreadMessages, markMessageAsRead, syncMessages
+    dashboardStats, messages, unreadCount, getMessages, getUnreadMessages, markMessageAsRead, syncMessages,
+    pushConfig, loadPushConfig, savePushConfig, testPushNotification, handleRemotePushNotification, handlePushNotificationOpen
   ]);
 
   return (

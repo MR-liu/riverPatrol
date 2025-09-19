@@ -53,13 +53,18 @@ export async function GET(
     }
     
     // 检查权限：系统管理员或该区域的负责人可以查看
-    if (decoded.roleCode !== 'ADMIN' && 
-        decoded.roleCode !== 'MAINTENANCE_SUPERVISOR') {
+    // 支持多种角色代码格式
+    const adminRoles = ['ADMIN', 'admin', 'R001']
+    const supervisorRoles = ['MAINTENANCE_SUPERVISOR', 'R006']
+    
+    const isAdmin = adminRoles.includes(decoded.roleCode) || decoded.roleId === 'R001'
+    const isSupervisor = supervisorRoles.includes(decoded.roleCode) || decoded.roleId === 'R006'
+    
+    if (!isAdmin && !isSupervisor) {
       return errorResponse('无权限查看此区域', 403)
     }
     
-    if (decoded.roleCode === 'MAINTENANCE_SUPERVISOR' && 
-        area.supervisor_id !== decoded.userId) {
+    if (isSupervisor && !isAdmin && area.supervisor_id !== decoded.userId) {
       return errorResponse('无权限查看此区域', 403)
     }
     
@@ -72,25 +77,30 @@ export async function GET(
     
     // 获取区域下的团队成员
     const { data: teamMembers } = await supabase
-      .from('area_team_members')
+      .from('team_members')
       .select(`
         *,
-        member:users!area_team_members_user_id_fkey(
+        users!team_members_user_id_fkey(
           id,
           username,
-          real_name,
+          name,
           role_id,
           phone,
           email,
-          roles!users_role_id_fkey(
+          roles(
             id,
             code,
             name
           )
+        ),
+        team:maintenance_teams!inner(
+          id,
+          name,
+          area_id
         )
       `)
-      .eq('area_id', params.id)
-      .eq('is_active', true)
+      .eq('team.area_id', params.id)
+      .eq('is_available', true)
     
     // 获取区域统计数据
     const { data: stats } = await supabase
@@ -123,11 +133,17 @@ export async function GET(
       monitoringPoints = pointData || []
     }
     
+    // Format team members to maintain backward compatibility
+    const formattedTeamMembers = (teamMembers || []).map(member => ({
+      ...member,
+      member: member.users // Rename users to member for backward compatibility
+    }))
+    
     return successResponse({
       area: {
         ...area,
         rivers: rivers || [],
-        team_members: teamMembers || [],
+        team_members: formattedTeamMembers,
         statistics: stats,
         devices,
         monitoring_points: monitoringPoints,
@@ -159,7 +175,9 @@ export async function PUT(
     const decoded = jwt.verify(token, JWT_SECRET) as any
     
     // 只有系统管理员可以更新区域
-    if (decoded.roleCode !== 'ADMIN') {
+    // 支持多种角色代码格式
+    const allowedRoles = ['ADMIN', 'admin', 'R001']
+    if (!allowedRoles.includes(decoded.roleCode) && !allowedRoles.includes(decoded.roleId)) {
       return errorResponse('只有系统管理员可以更新区域', 403)
     }
     

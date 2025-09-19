@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       .from('rivers')
       .select(`
         *,
-        area:river_management_areas!rivers_area_id_fkey(
+        area:river_management_areas!fk_rivers_area(
           id,
           name,
           code,
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
       `)
       .order('created_at', { ascending: false })
     
-    // 如果指定了区域ID，只返回该区域的河道
+    // 如果指定了区域ID，直接通过area_id字段筛选
     if (areaId) {
       query = query.eq('area_id', areaId)
     }
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
         .from('devices')
         .select('*', { count: 'exact', head: true })
         .eq('river_id', river.id)
-        .eq('type_id', 'DT_001') // 假设DT_001是摄像头类型
+        .in('type_id', ['DT001', 'DT002', 'DT003', 'DT_CAM_HD', 'DT_CAM_AI']) // 所有摄像头类型
       
       return {
         ...river,
@@ -122,21 +122,29 @@ export async function POST(request: NextRequest) {
     
     const supabase = createServiceClient()
     
-    // 检查区域是否存在
-    const { data: area } = await supabase
-      .from('river_management_areas')
-      .select('id, supervisor_id')
-      .eq('id', validationResult.data.area_id)
-      .single()
-    
-    if (!area) {
-      return errorResponse('指定的区域不存在', 404)
+    // 检查区域是否存在（如果指定了area_id）
+    if (validationResult.data.area_id) {
+      const { data: area } = await supabase
+        .from('river_management_areas')
+        .select('id, supervisor_id')
+        .eq('id', validationResult.data.area_id)
+        .single()
+      
+      if (!area) {
+        return errorResponse('指定的区域不存在', 404)
+      }
     }
     
-    // 检查权限：系统管理员或该区域的负责人可以创建河道
-    if (decoded.roleCode !== 'ADMIN') {
-      if (decoded.roleCode !== 'MAINTENANCE_SUPERVISOR' || 
-          area.supervisor_id !== decoded.userId) {
+    // 检查权限：系统管理员或区域管理员可以创建河道
+    if (decoded.roleCode !== 'R001' && validationResult.data.area_id) {
+      const { data: area } = await supabase
+        .from('river_management_areas')
+        .select('supervisor_id')
+        .eq('id', validationResult.data.area_id)
+        .single()
+      
+      if (decoded.roleCode !== 'R006' || 
+          area?.supervisor_id !== decoded.userId) {
         return errorResponse('无权限在此区域创建河道', 403)
       }
     }
@@ -231,7 +239,7 @@ export async function PUT(request: NextRequest) {
       .from('rivers')
       .select(`
         *,
-        area:river_management_areas!rivers_area_id_fkey(
+        area:river_management_areas!fk_rivers_area(
           id,
           supervisor_id
         )
@@ -244,7 +252,7 @@ export async function PUT(request: NextRequest) {
     }
     
     // 检查权限
-    if (decoded.roleCode !== 'ADMIN') {
+    if (decoded.roleCode !== 'R001') {
       if (decoded.roleCode !== 'MAINTENANCE_SUPERVISOR' || 
           river.area?.supervisor_id !== decoded.userId) {
         return errorResponse('无权限更新此河道', 403)
@@ -302,7 +310,7 @@ export async function DELETE(request: NextRequest) {
       .from('rivers')
       .select(`
         *,
-        area:river_management_areas!rivers_area_id_fkey(
+        area:river_management_areas!fk_rivers_area(
           id,
           supervisor_id
         )
@@ -315,7 +323,7 @@ export async function DELETE(request: NextRequest) {
     }
     
     // 检查权限
-    if (decoded.roleCode !== 'ADMIN') {
+    if (decoded.roleCode !== 'R001') {
       if (decoded.roleCode !== 'MAINTENANCE_SUPERVISOR' || 
           river.area?.supervisor_id !== decoded.userId) {
         return errorResponse('无权限删除此河道', 403)

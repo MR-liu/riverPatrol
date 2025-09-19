@@ -152,6 +152,18 @@ export async function POST(
       workorderAreaId = supervisorArea?.id
     }
     
+    // 处理告警的图片和视频
+    // 优先使用media_files中的多图片，如果没有则使用单个image_url
+    let workorderImages = []
+    
+    if (alarm.media_files?.images && Array.isArray(alarm.media_files.images)) {
+      // 使用新的多图片字段
+      workorderImages = alarm.media_files.images
+    } else if (alarm.image_url) {
+      // 向后兼容：使用旧的单图片字段
+      workorderImages = [alarm.image_url]
+    }
+    
     // 创建工单
     const { data: newWorkorder, error: workorderError } = await supabase
       .from('workorders')
@@ -171,12 +183,14 @@ export async function POST(
           longitude: alarm.monitoring_points?.longitude,
           latitude: alarm.monitoring_points?.latitude
         },
+        images: workorderImages, // 传递图片数组到工单
         creator_id: decoded.userId,
         // 只有在assignee_id有值且不为空字符串时才设置，否则设为null
         assignee_id: assignee_id && assignee_id !== '' ? assignee_id : null,
         // R006创建的工单默认由自己负责
         supervisor_id: decoded.roleCode === 'MAINTENANCE_SUPERVISOR' ? decoded.userId : null,
         source: 'alarm',
+        workorder_source: 'ai', // 标记工单来源为AI
         expected_complete_at: expected_complete_at || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 默认24小时
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

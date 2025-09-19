@@ -20,15 +20,14 @@ const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key'
 const createAreaSchema = z.object({
   name: z.string().min(1, '区域名称不能为空'),
   code: z.string().min(1, '区域编码不能为空'),
-  supervisor_id: z.string().optional(),
-  monitoring_point_ids: z.array(z.string()).optional(),
-  device_ids: z.array(z.string()).optional(),
-  boundary_coordinates: z.any().optional(),
-  center_coordinates: z.any().optional(),
-  area_type: z.string().optional(),
-  risk_level: z.string().optional(),
-  maintenance_schedule: z.any().optional(),
-  special_requirements: z.string().optional()
+  area_size: z.number().optional(), // 区域面积(平方公里)
+  responsible_dept_id: z.string().nullable().optional(), // 负责部门ID
+  supervisor_id: z.string().nullable().optional(), // 区域主管ID
+  maintenance_team_id: z.string().nullable().optional(), // 维护团队ID
+  coordinates: z.any().optional(), // 区域边界坐标
+  special_requirements: z.string().optional(), // 特殊管理要求
+  description: z.string().optional(), // 区域描述
+  status: z.enum(['active', 'inactive']).optional() // 状态
 })
 
 // 权限检查辅助函数
@@ -84,9 +83,15 @@ export async function GET(request: NextRequest) {
           username,
           name,
           role_id
+        ),
+        rivers:rivers!fk_rivers_area(
+          id,
+          name,
+          code,
+          length
         )
       `)
-      .eq('is_active', true)
+      .eq('status', 'active')
       .order('created_at', { ascending: false })
     
     // 移除角色限制，允许所有用户查看所有区域（用于筛选）
@@ -106,8 +111,16 @@ export async function GET(request: NextRequest) {
         .select('*', { count: 'exact', head: true })
         .eq('area_id', area.id)
       
-      // 获取设备数量（通过device_ids）
-      const deviceCount = area.device_ids?.length || 0
+      // 获取设备数量（通过河道关联）
+      let deviceCount = 0
+      if (area.rivers && area.rivers.length > 0) {
+        const riverIds = area.rivers.map((r: any) => r.id)
+        const { count } = await supabase
+          .from('devices')
+          .select('*', { count: 'exact', head: true })
+          .in('river_id', riverIds)
+        deviceCount = count || 0
+      }
       
       return {
         ...area,
@@ -138,7 +151,9 @@ export async function POST(request: NextRequest) {
     const decoded = jwt.verify(token, JWT_SECRET) as any
     
     // 只有系统管理员可以创建区域
-    if (decoded.roleCode !== 'ADMIN') {
+    // 支持多种角色代码格式
+    const allowedRoles = ['ADMIN', 'admin', 'R001']
+    if (!allowedRoles.includes(decoded.roleCode) && !allowedRoles.includes(decoded.roleId)) {
       return errorResponse('只有系统管理员可以创建区域', 403)
     }
     
@@ -171,13 +186,19 @@ export async function POST(request: NextRequest) {
     const random = Math.random().toString(36).substr(2, 4) // 4位随机字符
     const areaId = `AREA${timestamp}${random}`.toUpperCase() // 总长度：4+6+4=14个字符
     
-    // 创建区域
+    // 创建区域（不再需要river_id，区域和河道是一对多关系）
     const areaData = {
       id: areaId,
-      ...validationResult.data,
-      monitoring_point_ids: validationResult.data.monitoring_point_ids || [],
-      device_ids: validationResult.data.device_ids || [],
-      is_active: true,
+      name: validationResult.data.name,
+      code: validationResult.data.code,
+      area_size: validationResult.data.area_size || null,
+      responsible_dept_id: validationResult.data.responsible_dept_id || null,
+      supervisor_id: validationResult.data.supervisor_id || null,
+      maintenance_team_id: validationResult.data.maintenance_team_id || null,
+      coordinates: validationResult.data.coordinates || null,
+      special_requirements: validationResult.data.special_requirements || null,
+      description: validationResult.data.description || null,
+      status: validationResult.data.status || 'active',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
@@ -257,7 +278,7 @@ export async function PUT(request: NextRequest) {
       if (!area || area.supervisor_id !== decoded.userId) {
         return errorResponse('无权限更新此区域', 403)
       }
-    } else if (decoded.roleCode !== 'ADMIN') {
+    } else if (!['ADMIN', 'admin', 'R001'].includes(decoded.roleCode) && decoded.roleId !== 'R001') {
       return errorResponse('无权限更新区域', 403)
     }
     
@@ -350,7 +371,9 @@ export async function DELETE(request: NextRequest) {
     const decoded = jwt.verify(token, JWT_SECRET) as any
     
     // 只有系统管理员可以删除区域
-    if (decoded.roleCode !== 'ADMIN') {
+    // 支持多种角色代码格式
+    const allowedRoles = ['ADMIN', 'admin', 'R001']
+    if (!allowedRoles.includes(decoded.roleCode) && !allowedRoles.includes(decoded.roleId)) {
       return errorResponse('只有系统管理员可以删除区域', 403)
     }
     

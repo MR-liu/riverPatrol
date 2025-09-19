@@ -1,4 +1,4 @@
-import OptimizedApiService from './OptimizedApiService';
+import ProblemCategoryService from './ProblemCategoryService';
 
 export interface ProblemCategory {
   name: string;
@@ -7,7 +7,7 @@ export interface ProblemCategory {
 }
 
 /**
- * 简化的问题分类服务 - 基于OptimizedApiService
+ * 简化的问题分类服务 - 基于ProblemCategoryService
  * 为保持向后兼容性而创建的轻量级包装器
  */
 class SimpleProblemCategoryService {
@@ -18,11 +18,45 @@ class SimpleProblemCategoryService {
     if (this.isInitialized) return;
     
     try {
-      const result = await OptimizedApiService.getProblemCategories();
-      if (result.success && result.data) {
-        this.cachedCategories = result.data.categories || {};
-        this.isInitialized = true;
-      }
+      // 使用新的ProblemCategoryService初始化
+      await ProblemCategoryService.initialize();
+      
+      // 从ProblemCategoryService获取分类并转换格式
+      const categories = ProblemCategoryService.getCategories();
+      this.cachedCategories = {};
+      
+      // 转换为兼容的格式
+      categories.forEach(cat => {
+        this.cachedCategories[cat.id] = {
+          name: cat.name,
+          level: 1,
+          parent: cat.parent_id || null
+        };
+        
+        // 处理子分类
+        if (cat.children) {
+          cat.children.forEach(subCat => {
+            this.cachedCategories[subCat.id] = {
+              name: subCat.name,
+              level: 2,
+              parent: cat.id
+            };
+            
+            // 处理三级分类
+            if (subCat.children) {
+              subCat.children.forEach(detailCat => {
+                this.cachedCategories[detailCat.id] = {
+                  name: detailCat.name,
+                  level: 3,
+                  parent: subCat.id
+                };
+              });
+            }
+          });
+        }
+      });
+      
+      this.isInitialized = true;
     } catch (error) {
       console.error('SimpleProblemCategoryService initialization failed:', error);
     }
@@ -50,6 +84,8 @@ class SimpleProblemCategoryService {
   }
 
   static async refreshCategories(): Promise<void> {
+    // 强制刷新ProblemCategoryService的缓存
+    await ProblemCategoryService.forceRefresh();
     this.isInitialized = false;
     await this.initialize();
   }

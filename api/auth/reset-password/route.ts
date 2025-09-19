@@ -35,7 +35,9 @@ export async function POST(request: NextRequest) {
     const decoded = jwt.verify(token, JWT_SECRET) as any
     
     // 只有管理员和有用户管理权限的角色可以重置密码
-    if (decoded.roleCode !== 'ADMIN' && decoded.roleCode !== 'MONITOR_MANAGER') {
+    // 支持多种角色代码格式
+    const allowedRoles = ['ADMIN', 'admin', 'R001', 'MONITOR_MANAGER', 'R002']
+    if (!allowedRoles.includes(decoded.roleCode) && !allowedRoles.includes(decoded.roleId)) {
       return errorResponse('无权限重置密码', 403)
     }
     

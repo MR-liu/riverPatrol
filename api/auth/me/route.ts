@@ -20,8 +20,16 @@ export async function GET(request: NextRequest) {
     // 获取 token
     const cookieStore = await cookies()
     const token = cookieStore.get(COOKIE_NAME)?.value
+    
+    // 调试信息
+    console.log('[Me API] Cookie check:', {
+      hasCookie: !!token,
+      cookieName: COOKIE_NAME,
+      allCookies: cookieStore.getAll().map(c => c.name)
+    })
 
     if (!token) {
+      console.log('[Me API] No auth token found in cookies')
       return errorResponse('未登录或会话已过期', 401)
     }
 

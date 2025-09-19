@@ -254,6 +254,47 @@ export async function POST(request: NextRequest) {
     await supabase
       .from('notification_queue')
       .insert(queueItems)
+    
+    // 发送极光推送通知
+    if (process.env.ENABLE_PUSH_NOTIFICATIONS === 'true') {
+      try {
+        const { default: pushNotificationService } = await import('@/lib/push-notification.service')
+        
+        // 根据消息类型选择推送模板
+        let templateCode = 'SYSTEM_ANNOUNCEMENT'
+        const templateData: any = {
+          title,
+          content,
+          action_url
+        }
+        
+        // 根据不同的消息类型使用不同的模板
+        if (message_type === 'workorder' && related_id) {
+          templateCode = 'WORKORDER_ASSIGNED'
+          templateData.orderId = related_id
+          templateData.orderType = related_type || '工单'
+        } else if (message_type === 'alarm' && related_id) {
+          templateCode = 'ALARM_NEW'
+          templateData.alarmId = related_id
+          templateData.alarmType = related_type || '告警'
+        }
+        
+        // 发送推送
+        await pushNotificationService.sendTemplateNotification(
+          templateCode,
+          templateData,
+          targetUserIds,
+          {
+            priority: priority === 'urgent' ? 'urgent' : priority === 'important' ? 'high' : 'normal',
+            saveToDatabase: false, // 已经在上面保存了
+            sendAppPush: true
+          }
+        )
+      } catch (pushError) {
+        console.error('发送推送失败:', pushError)
+        // 不影响主流程，记录错误即可
+      }
+    }
 
     // 记录API活动日志
     await logApiActivity('POST', 'app-notifications', senderId, {

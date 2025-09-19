@@ -118,9 +118,9 @@ class WorkOrderApiService {
     return this.updateWorkOrderStatus({
       workorder_id: workOrderId,
       action: 'submit_result',
-      attachments,
+      attachments: attachments || [],
       note: note || '提交处理结果',
-      processResult,
+      processResult: processResult || '',
     } as any);
   }
 
@@ -285,6 +285,36 @@ class WorkOrderApiService {
       return successUrls;
     } catch (error) {
       console.error('批量上传图片失败:', error);
+      throw error;
+    }
+  }
+
+  // 最终复核通过
+  async finalApproveWorkOrder(workOrderId: string, note?: string): Promise<ApiResponse> {
+    try {
+      const response = await this.updateWorkOrderStatus({
+        workorder_id: workOrderId,
+        action: 'final_approve' as any,
+        note: note || '最终复核通过',
+      });
+      return response;
+    } catch (error) {
+      console.error('最终复核通过失败:', error);
+      throw error;
+    }
+  }
+
+  // 最终复核拒绝
+  async finalRejectWorkOrder(workOrderId: string, reason: string): Promise<ApiResponse> {
+    try {
+      const response = await this.updateWorkOrderStatus({
+        workorder_id: workOrderId,
+        action: 'final_reject' as any,
+        note: reason,
+      });
+      return response;
+    } catch (error) {
+      console.error('最终复核拒绝失败:', error);
       throw error;
     }
   }

@@ -1,24 +1,25 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { MaterialIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
+  ActivityIndicator,
   Alert,
   Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
   TextInput,
-  FlatList,
+  TouchableOpacity,
+  View
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 
-import { useAppContext } from '@/contexts/AppContext';
 import { LoadingState } from '@/components/LoadingState';
 import { SafeAreaWrapper } from '@/components/SafeAreaWrapper';
-import WorkOrderApiService from '@/utils/WorkOrderApiService';
+import { useAppContext } from '@/contexts/AppContext';
 import PermissionService from '@/utils/PermissionService';
+import WorkOrderApiService from '@/utils/WorkOrderApiService';
 
 export default function EnhancedWorkOrderDetailScreen() {
   const { selectedWorkOrder, setSelectedWorkOrder, workOrders, setWorkOrders, currentUser } = useAppContext();
@@ -26,6 +27,18 @@ export default function EnhancedWorkOrderDetailScreen() {
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [imageLoadingStates, setImageLoadingStates] = useState<{[key: number]: boolean}>({});
+  const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false); // 本地处理状态
+  
+  // 调试：打印工单数据
+  console.log('工单详情数据:', {
+    id: selectedWorkOrder?.id,
+    status: selectedWorkOrder?.status,
+    results: selectedWorkOrder?.results,
+    hasResults: selectedWorkOrder?.results && (Array.isArray(selectedWorkOrder?.results) ? selectedWorkOrder?.results.length > 0 : !!selectedWorkOrder?.results),
+  });
   
   // 获取用户角色和权限
   const userRole = currentUser?.role;
@@ -52,6 +65,47 @@ export default function EnhancedWorkOrderDetailScreen() {
     if (!selectedWorkOrder || !permissions.canAssign) return;
     // TODO: 实现分配工单的模态框，选择维护员
     Alert.alert('分配工单', '分配功能开发中...');
+  };
+
+  // 开始处理工单（维护员使用） - 先调用API更新状态
+  const handleStartProcessing = async () => {
+    if (!selectedWorkOrder) return;
+    
+    Alert.alert(
+      '开始处理工单',
+      '确认开始处理这个工单吗？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确定',
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              // 先调用API将状态更新为processing
+              const response = await WorkOrderApiService.startWorkOrder(
+                selectedWorkOrder.id,
+                undefined, // location info
+                '开始现场处理'
+              );
+
+              if (response.success) {
+                // 更新本地状态
+                await refreshWorkOrder('processing');
+                // 跳转到处理结果填写页面
+                router.push('/process-result');
+              } else {
+                Alert.alert('操作失败', response.message || '无法开始处理工单');
+              }
+            } catch (error) {
+              console.error('Start processing error:', error);
+              Alert.alert('操作失败', '开始处理工单时发生错误，请重试');
+            } finally {
+              setIsLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   // 开始处理工单
@@ -88,6 +142,48 @@ export default function EnhancedWorkOrderDetailScreen() {
         },
       ]
     );
+  };
+
+  // 发起人确认完成
+  const handleReporterConfirm = async () => {
+    if (!selectedWorkOrder) return;
+    
+    Alert.alert(
+      '确认完成',
+      '确认工单处理结果满意，工单将标记为已完成？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认完成',
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              const response = await WorkOrderApiService.updateWorkOrderStatus({
+                workorder_id: selectedWorkOrder.id,
+                action: 'reporter_confirm' as any,
+                note: '发起人确认完成',
+              });
+
+              if (response.success) {
+                await refreshWorkOrder('completed');
+                Alert.alert('确认成功', '工单已完成');
+              }
+            } catch (error) {
+              console.error('Reporter confirm error:', error);
+              Alert.alert('操作失败', '确认失败，请重试');
+            } finally {
+              setIsLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // 发起人拒绝（要求返工）
+  const handleReporterReject = async () => {
+    if (!selectedWorkOrder) return;
+    setRejectModalVisible(true);
   };
 
   // 取消工单
@@ -133,8 +229,9 @@ export default function EnhancedWorkOrderDetailScreen() {
     // 更新本地状态 - 使用正确的状态映射
     const statusMap: { [key: string]: string } = {
       'pending': '待分配',
+      'pending_dispatch': '待派发',
+      'dispatched': '已派发',
       'assigned': '已分配',
-      'accepted': '待接收', 
       'processing': '处理中',
       'pending_review': '待审核',
       'completed': '已完成',
@@ -204,6 +301,47 @@ export default function EnhancedWorkOrderDetailScreen() {
     setRejectModalVisible(true);
   };
 
+  // 最终复核通过
+  const handleFinalApprove = async () => {
+    if (!selectedWorkOrder) return;
+    
+    Alert.alert(
+      '复核通过',
+      '确认复核通过这个工单？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认通过',
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              const response = await WorkOrderApiService.finalApproveWorkOrder(
+                selectedWorkOrder.id,
+                '复核通过'
+              );
+
+              if (response.success) {
+                await refreshWorkOrder('completed');
+                Alert.alert('复核成功', '工单已完成');
+              }
+            } catch (error) {
+              console.error('Final approve error:', error);
+              Alert.alert('操作失败', '复核失败，请重试');
+            } finally {
+              setIsLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // 最终复核拒绝
+  const handleFinalReject = async () => {
+    if (!selectedWorkOrder) return;
+    setRejectModalVisible(true);
+  };
+
   // 确认拒绝
   const confirmReject = async () => {
     if (!rejectReason.trim()) {
@@ -215,13 +353,33 @@ export default function EnhancedWorkOrderDetailScreen() {
     setIsLoading(true);
     
     try {
-      const response = await WorkOrderApiService.rejectWorkOrder(
-        selectedWorkOrder!.id,
-        rejectReason
-      );
+      // 判断是审核拒绝、发起人拒绝还是最终复核拒绝
+      const isFinalReject = selectedWorkOrder?.status === 'pending_final_review' || 
+                           selectedWorkOrder?.status === '待复核';
+      const isReporterReject = selectedWorkOrder?.status === 'pending_reporter_confirm' || 
+                               selectedWorkOrder?.status === '待发起人确认';
+      
+      let response;
+      if (isFinalReject) {
+        response = await WorkOrderApiService.finalRejectWorkOrder(
+          selectedWorkOrder!.id,
+          rejectReason
+        );
+      } else if (isReporterReject) {
+        response = await WorkOrderApiService.updateWorkOrderStatus({
+          workorder_id: selectedWorkOrder!.id,
+          action: 'reporter_reject' as any,
+          note: rejectReason,
+        });
+      } else {
+        response = await WorkOrderApiService.rejectWorkOrder(
+          selectedWorkOrder!.id,
+          rejectReason
+        );
+      }
 
       if (response.success) {
-        await refreshWorkOrder(response.data?.new_status);
+        await refreshWorkOrder(response.data?.new_status || 'processing');
         Alert.alert('打回成功', '工单已打回，要求返工');
         setRejectReason('');
       }
@@ -241,7 +399,7 @@ export default function EnhancedWorkOrderDetailScreen() {
     const status = selectedWorkOrder?.status;
 
     // 根据状态和权限显示不同按钮
-    if (permissions.canAssign && (status === '待分配' || status === 'pending')) {
+    if (permissions.canAssign && (status === '待分配' || status === 'pending' || status === '待派发' || status === 'pending_dispatch')) {
       buttons.push(
         <TouchableOpacity
           key="assign"
@@ -254,18 +412,21 @@ export default function EnhancedWorkOrderDetailScreen() {
       );
     }
 
-    if (permissions.canStart && (status === '已分配' || status === 'assigned' || status === '待分配' || status === 'pending')) {
+    // 维护员处理按钮
+    const userRoleId = currentUser?.role_id || currentUser?.role?.id;
+    if ((userRoleId === 'R003') && (status === '已派发' || status === 'dispatched' || status === '已分配' || status === 'assigned')) {
       buttons.push(
         <TouchableOpacity
-          key="start"
-          style={[styles.actionButton, { backgroundColor: '#8B5CF6' }]}
-          onPress={handleStartOrder}
+          key="process"
+          style={[styles.actionButton, { backgroundColor: '#10B981' }]}
+          onPress={handleStartProcessing}
         >
-          <MaterialIcons name="play-arrow" size={20} color="white" />
-          <Text style={styles.actionButtonText}>开始处理</Text>
+          <MaterialIcons name="build" size={20} color="white" />
+          <Text style={styles.actionButtonText}>处理工单</Text>
         </TouchableOpacity>
       );
     }
+
 
     if (permissions.canComplete && (status === '处理中' || status === 'processing')) {
       buttons.push(
@@ -304,7 +465,63 @@ export default function EnhancedWorkOrderDetailScreen() {
       );
     }
 
-    if (permissions.canCancel) {
+    // 发起人确认按钮
+    if ((status === '待发起人确认' || status === 'pending_reporter_confirm') && 
+        selectedWorkOrder?.reporter === currentUser?.username) {
+      buttons.push(
+        <TouchableOpacity
+          key="confirm"
+          style={[styles.actionButton, { backgroundColor: '#10B981' }]}
+          onPress={handleReporterConfirm}
+        >
+          <MaterialIcons name="check-circle" size={20} color="white" />
+          <Text style={styles.actionButtonText}>确认完成</Text>
+        </TouchableOpacity>
+      );
+      
+      buttons.push(
+        <TouchableOpacity
+          key="reporter-reject"
+          style={[styles.actionButton, { backgroundColor: '#F59E0B' }]}
+          onPress={handleReporterReject}
+        >
+          <MaterialIcons name="replay" size={20} color="white" />
+          <Text style={styles.actionButtonText}>要求返工</Text>
+        </TouchableOpacity>
+      );
+    }
+
+    // 最终复核按钮 - 系统管理员、监控中心主管、巡检员可以复核待复核的工单
+    const canDoFinalReview = userRoleId === 'R001' ||  // 系统管理员
+                            userRoleId === 'R002' ||  // 监控中心主管
+                            userRoleId === 'R004' ||  // 河道巡检员（发起人）
+                            selectedWorkOrder?.reporter === currentUser?.username;  // 或者是工单发起人
+    
+    if ((status === '待复核' || status === 'pending_final_review') && canDoFinalReview) {
+      buttons.push(
+        <TouchableOpacity
+          key="final-approve"
+          style={[styles.actionButton, { backgroundColor: '#10B981' }]}
+          onPress={handleFinalApprove}
+        >
+          <MaterialIcons name="verified" size={20} color="white" />
+          <Text style={styles.actionButtonText}>复核通过</Text>
+        </TouchableOpacity>
+      );
+      
+      buttons.push(
+        <TouchableOpacity
+          key="final-reject"
+          style={[styles.actionButton, { backgroundColor: '#F59E0B' }]}
+          onPress={handleFinalReject}
+        >
+          <MaterialIcons name="replay" size={20} color="white" />
+          <Text style={styles.actionButtonText}>要求返工</Text>
+        </TouchableOpacity>
+      );
+    }
+
+    if (permissions.canCancel && status !== '待发起人确认' && status !== 'pending_reporter_confirm' && status !== '待复核' && status !== 'pending_final_review') {
       buttons.push(
         <TouchableOpacity
           key="cancel"
@@ -334,7 +551,26 @@ export default function EnhancedWorkOrderDetailScreen() {
   };
 
   const getStatusDisplay = (status: string) => {
-    return PermissionService.formatStatus(status);
+    // 对维护员和巡检员，dispatched 状态显示为"待处理"
+    const userRoleId = currentUser?.role_id || currentUser?.role?.id;
+    if ((userRoleId === 'R003' || userRoleId === 'R004') && status === 'dispatched') {
+      return { text: '待处理', color: '#F59E0B' };
+    }
+    
+    const statusMap: { [key: string]: { text: string, color: string } } = {
+      'pending': { text: '待分配', color: '#F59E0B' },
+      'pending_dispatch': { text: '待派发', color: '#F59E0B' },
+      'dispatched': { text: '已派发', color: '#3B82F6' },
+      'assigned': { text: '已分配', color: '#3B82F6' },
+      'processing': { text: '处理中', color: '#8B5CF6' },
+      'pending_review': { text: '待审核', color: '#F59E0B' },
+      'pending_reporter_confirm': { text: '待发起人确认', color: '#F59E0B' },
+      'pending_final_review': { text: '待复核', color: '#F59E0B' },
+      'completed': { text: '已完成', color: '#10B981' },
+      'cancelled': { text: '已取消', color: '#6B7280' },
+    };
+    
+    return statusMap[status] || { text: status, color: '#6B7280' };
   };
 
   return (
@@ -443,7 +679,7 @@ export default function EnhancedWorkOrderDetailScreen() {
                   <MaterialIcons name="person" size={20} color="#6B7280" />
                   <View style={styles.infoContent}>
                     <Text style={styles.infoLabel}>上报人</Text>
-                    <Text style={styles.infoValue}>{selectedWorkOrder.reporter}</Text>
+                    <Text style={styles.infoValue}>{selectedWorkOrder.reporter || '系统'}</Text>
                   </View>
                 </View>
                 {selectedWorkOrder.contact && (
@@ -457,6 +693,164 @@ export default function EnhancedWorkOrderDetailScreen() {
                 )}
               </View>
             </View>
+
+            {/* 处理结果信息 - 已完成、待审核、待确认、待复核的工单显示 */}
+            {(selectedWorkOrder.status === '已完成' || 
+              selectedWorkOrder.status === 'completed' ||
+              selectedWorkOrder.status === '待审核' ||
+              selectedWorkOrder.status === 'pending_review' ||
+              selectedWorkOrder.status === '待发起人确认' ||
+              selectedWorkOrder.status === 'pending_reporter_confirm' ||
+              selectedWorkOrder.status === '待复核' ||
+              selectedWorkOrder.status === 'pending_final_review') && 
+             selectedWorkOrder.results && (() => {
+               // 处理 results 可能是对象或数组的情况
+               const resultData = Array.isArray(selectedWorkOrder.results) 
+                 ? selectedWorkOrder.results[0] 
+                 : selectedWorkOrder.results;
+               
+               if (!resultData) return null;
+               
+               console.log('处理结果数据:', {
+                 hasAfterPhotos: !!resultData.after_images,
+                 afterPhotosLength: resultData.after_images?.length,
+                 afterPhotos: resultData.after_images
+               },
+              JSON.stringify(selectedWorkOrder.results));
+               
+               return (
+                <View style={styles.card}>
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.cardTitle}>处理结果</Text>
+                  </View>
+                  <View style={styles.infoSection}>
+                    {resultData.description && (
+                      <View style={styles.infoRow}>
+                        <MaterialIcons name="description" size={20} color="#6B7280" />
+                        <View style={styles.infoContent}>
+                          <Text style={styles.infoLabel}>处理说明</Text>
+                          <Text style={styles.infoValue}>{resultData.description}</Text>
+                        </View>
+                      </View>
+                    )}
+                    
+                    {resultData.after_images && resultData.after_images.length > 0 && (
+                      <View>
+                        <View style={styles.infoRow}>
+                          <MaterialIcons name="photo-library" size={20} color="#6B7280" />
+                          <View style={styles.infoContent}>
+                            <Text style={styles.infoLabel}>处理后照片 ({resultData.after_images.length}张)</Text>
+                          </View>
+                        </View>
+                        <ScrollView 
+                          horizontal 
+                          showsHorizontalScrollIndicator={false} 
+                          style={styles.photoContainer}
+                          contentContainerStyle={{ paddingRight: 16, marginTop: 8 }}
+                        >
+                          {resultData.after_images.map((photo: string, index: number) => (
+                            <TouchableOpacity
+                              key={`after-${index}`}
+                              style={styles.photoWrapper}
+                              onPress={() => {
+                                setPreviewImageUrl(photo);
+                                setImagePreviewVisible(true);
+                              }}
+                              activeOpacity={0.8}
+                            >
+                              <Image
+                                source={photo}
+                                style={styles.photo}
+                                contentFit="cover"
+                                transition={300}
+                                cachePolicy="memory-disk"
+                                recyclingKey={`after-photo-${index}`}
+                              />
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    )}
+                  
+                    {resultData.created_at && (
+                      <View style={styles.infoRow}>
+                        <MaterialIcons name="access-time" size={20} color="#6B7280" />
+                        <View style={styles.infoContent}>
+                          <Text style={styles.infoLabel}>处理时间</Text>
+                          <Text style={styles.infoValue}>
+                            {new Date(resultData.created_at).toLocaleString('zh-CN')}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                </View>
+               );
+             })()}
+
+            {/* 现场照片 */}
+            {selectedWorkOrder.images && selectedWorkOrder.images.length > 0 && (
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardTitle}>问题照片 ({selectedWorkOrder.images.length}张)</Text>
+                </View>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  style={styles.photoContainer}
+                  contentContainerStyle={{ paddingRight: 16 }}
+                >
+                  {selectedWorkOrder.images.map((photo: string, index: number) => {
+                    const isLoading = imageLoadingStates[index] !== false;
+                    // 直接使用原始CDN URL
+                    let processedUrl = photo;
+                    
+                    // 测试：使用一个公开的图片URL看是否能加载
+                    // processedUrl = 'https://picsum.photos/200/300';
+                    
+                    console.log(`图片${index + 1} URL:`, processedUrl);
+                    
+                    return (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.photoWrapper}
+                        onPress={() => {
+                          setPreviewImageUrl(processedUrl);
+                          setImagePreviewVisible(true);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Image
+                          source={processedUrl}
+                          style={styles.photo}
+                          contentFit="cover"
+                          transition={300}
+                          cachePolicy="memory-disk" // 使用内存和磁盘缓存
+                          recyclingKey={`photo-${index}`} // 优化内存使用
+                          onError={(error) => {
+                            console.error(`图片${index + 1}加载失败:`, error);
+                            setImageLoadingStates(prev => ({...prev, [index]: false}));
+                          }}
+                          onLoadStart={() => {
+                            setImageLoadingStates(prev => ({...prev, [index]: true}));
+                          }}
+                          onLoad={() => {
+                            console.log(`图片${index + 1}加载成功`);
+                            setImageLoadingStates(prev => ({...prev, [index]: false}));
+                          }}
+                        />
+                        {/* 加载指示器 */}
+                        {isLoading && (
+                          <View style={styles.photoLoadingOverlay}>
+                            <ActivityIndicator size="small" color="#3B82F6" />
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
           </ScrollView>
         </LoadingState>
 
@@ -499,6 +893,35 @@ export default function EnhancedWorkOrderDetailScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+          </View>
+        </Modal>
+        
+        {/* 图片预览模态框 */}
+        <Modal
+          visible={imagePreviewVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setImagePreviewVisible(false)}
+        >
+          <View style={styles.imagePreviewOverlay}>
+            <TouchableOpacity 
+              style={styles.imagePreviewContainer}
+              activeOpacity={1}
+              onPress={() => setImagePreviewVisible(false)}
+            >
+              <Image
+                source={previewImageUrl}
+                style={styles.previewImage}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+              />
+              <TouchableOpacity
+                style={styles.closePreviewButton}
+                onPress={() => setImagePreviewVisible(false)}
+              >
+                <MaterialIcons name="close" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </TouchableOpacity>
           </View>
         </Modal>
       </LinearGradient>
@@ -609,6 +1032,58 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#374151',
     lineHeight: 22,
+  },
+  photoContainer: {
+    paddingVertical: 8,
+    height: 140, // 固定容器高度
+  },
+  photoWrapper: {
+    marginRight: 12,
+    borderRadius: 8,
+    overflow: 'hidden',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    width: 120, // 明确设置宽度
+    height: 120, // 明确设置高度
+    backgroundColor: '#F3F4F6', // 添加背景色，便于看到占位
+  },
+  photo: {
+    width: 120,
+    height: 120,
+    borderRadius: 8,
+    backgroundColor: '#E5E7EB', // 添加背景色
+  },
+  photoPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  photoLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  networkHint: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+  },
+  photoOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 8,
   },
   actionBar: {
     flexDirection: 'row',
@@ -754,5 +1229,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#6B7280',
+  },
+  // 图片预览样式
+  imagePreviewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePreviewContainer: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  closePreviewButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

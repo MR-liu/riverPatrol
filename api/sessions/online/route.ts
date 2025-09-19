@@ -33,7 +33,9 @@ export async function GET(request: NextRequest) {
     }
     
     // 只有管理员角色可以查看在线会话
-    if (decoded.roleCode !== 'ADMIN' && decoded.roleCode !== 'MONITOR_MANAGER') {
+    // 支持多种角色代码格式
+    const allowedRoles = ['ADMIN', 'admin', 'R001', 'MONITOR_MANAGER', 'R002']
+    if (!allowedRoles.includes(decoded.roleCode) && !allowedRoles.includes(decoded.roleId)) {
       return errorResponse('无权限查看在线会话', 403)
     }
     

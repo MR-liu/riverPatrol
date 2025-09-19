@@ -33,7 +33,9 @@ export async function POST(request: NextRequest) {
     }
     
     // 只有管理员可以执行种子数据
-    if (decoded.roleCode !== 'ADMIN') {
+    // 支持多种角色代码格式
+    const allowedRoles = ['ADMIN', 'admin', 'R001']
+    if (!allowedRoles.includes(decoded.roleCode) && !allowedRoles.includes(decoded.roleId)) {
       return errorResponse('只有管理员可以执行此操作', 403)
     }
     

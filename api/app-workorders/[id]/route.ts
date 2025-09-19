@@ -217,9 +217,10 @@ export async function PUT(
         }
         break
         
-      case 'start': // 开始处理 - assigned → processing
+      case 'start': // 开始处理 - assigned/dispatched → processing
         if (currentWorkorder.assignee_id === userId) {
-          if (!['pending', 'assigned'].includes(currentWorkorder.status)) {
+          // 允许 pending, assigned, dispatched 状态的工单开始处理
+          if (!['pending', 'assigned', 'dispatched'].includes(currentWorkorder.status)) {
             return errorResponse('工单状态不允许开始处理', 400)
           }
           hasPermission = true
@@ -236,11 +237,34 @@ export async function PUT(
           hasPermission = true
           newStatus = 'pending_review'
           updateData.completed_at = new Date().toISOString()
-          // 不创建workorder_results记录，因为表可能不存在
+          
+          // 创建工单处理结果记录
+          if (attachments || processResult) {
+            const resultId = `WR_${Date.now().toString().slice(-10)}_${Math.random().toString(36).substr(2, 5)}`
+            const resultData = {
+              id: resultId,
+              workorder_id: workorderId,
+              result_type: '现场处理',
+              after_images: attachments || [],
+              description: processResult || note || '处理完成',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }
+            
+            // 插入处理结果
+            const { error: resultError } = await supabase
+              .from('workorder_results')
+              .insert(resultData)
+            
+            if (resultError) {
+              console.error('创建处理结果记录失败:', resultError)
+              // 不影响主流程，继续更新工单状态
+            }
+          }
         }
         break
         
-      case 'approve': // 审核通过 - pending_review → completed
+      case 'approve': // 审核通过 - 根据工单来源决定下一状态
         if (['R001', 'R002', 'R006'].includes(roleId)) {
           // R006只能审核自己区域的工单
           if (roleId === 'R006' && areaId !== currentWorkorder.area_id) {
@@ -250,7 +274,22 @@ export async function PUT(
             return errorResponse('只能审核待审核状态的工单', 400)
           }
           hasPermission = true
-          newStatus = 'completed'
+          
+          // 判断是人工工单还是AI工单
+          // 人工工单：有creator_id且不是系统用户
+          // AI工单：无creator_id或creator_id为系统用户
+          const isManualWorkorder = currentWorkorder.creator_id && 
+                                   currentWorkorder.creator_id !== 'SYSTEM' && 
+                                   currentWorkorder.creator_id !== 'AI_SYSTEM'
+          
+          if (isManualWorkorder) {
+            // 人工工单 → 待发起人确认
+            newStatus = 'pending_reporter_confirm'
+          } else {
+            // AI工单 → 待最终审批
+            newStatus = 'pending_final_review'
+          }
+          
           updateData.reviewer_id = userId
           updateData.reviewed_at = new Date().toISOString()
         }
@@ -270,6 +309,53 @@ export async function PUT(
           updateData.completed_at = null // 清除完成时间
           updateData.reviewer_id = userId
           updateData.reviewed_at = new Date().toISOString()
+        }
+        break
+        
+      case 'reporter_confirm': // 发起人确认 - pending_reporter_confirm → completed
+        if (currentWorkorder.creator_id === userId) {
+          if (currentWorkorder.status !== 'pending_reporter_confirm') {
+            return errorResponse('只能确认待发起人确认状态的工单', 400)
+          }
+          hasPermission = true
+          newStatus = 'completed'
+          updateData.confirmed_at = new Date().toISOString()
+        }
+        break
+        
+      case 'reporter_reject': // 发起人拒绝 - pending_reporter_confirm → processing
+        if (currentWorkorder.creator_id === userId) {
+          if (currentWorkorder.status !== 'pending_reporter_confirm') {
+            return errorResponse('只能拒绝待发起人确认状态的工单', 400)
+          }
+          hasPermission = true
+          newStatus = 'processing' // 打回要求返工
+          updateData.completed_at = null
+        }
+        break
+        
+      case 'final_approve': // 最终审批通过 - pending_final_review → completed
+        if (['R001', 'R002'].includes(roleId)) { // 只有系统管理员和监控中心主管可以最终审批
+          if (currentWorkorder.status !== 'pending_final_review') {
+            return errorResponse('只能审批待最终审批状态的工单', 400)
+          }
+          hasPermission = true
+          newStatus = 'completed'
+          updateData.final_reviewer_id = userId
+          updateData.final_reviewed_at = new Date().toISOString()
+        }
+        break
+        
+      case 'final_reject': // 最终审批拒绝 - pending_final_review → processing
+        if (['R001', 'R002'].includes(roleId)) {
+          if (currentWorkorder.status !== 'pending_final_review') {
+            return errorResponse('只能拒绝待最终审批状态的工单', 400)
+          }
+          hasPermission = true
+          newStatus = 'processing' // 打回要求返工
+          updateData.completed_at = null
+          updateData.final_reviewer_id = userId
+          updateData.final_reviewed_at = new Date().toISOString()
         }
         break
         

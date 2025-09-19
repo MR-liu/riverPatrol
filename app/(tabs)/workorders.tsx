@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaWrapper } from '@/components/SafeAreaWrapper';
+import Toast from 'react-native-toast-message';
 
 import { useAppContext } from '@/contexts/AppContext';
 import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
@@ -55,7 +56,7 @@ export default function WorkOrdersScreen() {
       case 'R003': // 河道维护员
       case 'R004': // 河道巡检员
         return [
-          { value: '待接收', label: '待接收' },  // assigned 状态对维护员显示为"待接收"
+          { value: '已派发', label: '待处理' },  // dispatched 状态显示为"待处理"
           { value: '处理中', label: '处理中' },
           { value: '已完成', label: '已完成' },
         ];
@@ -136,11 +137,23 @@ export default function WorkOrdersScreen() {
                 (order.createdAt ? new Date(order.createdAt).toLocaleString('zh-CN') : '未知时间'),
         }));
         setWorkOrders(formattedOrders);
-        Alert.alert('刷新成功', `已加载 ${response.data.items.length} 个工单`);
+        Toast.show({
+          type: 'success',
+          text1: '刷新成功',
+          text2: `已加载 ${response.data.items.length} 个工单`,
+          position: 'top',
+          visibilityTime: 2000,
+        });
       }
     } catch (error) {
       console.error('Refresh error:', error);
-      Alert.alert('刷新失败', '请检查网络连接');
+      Toast.show({
+        type: 'error',
+        text1: '刷新失败',
+        text2: '请检查网络连接',
+        position: 'top',
+        visibilityTime: 2000,
+      });
     } finally {
       setIsRefreshing(false);
     }
@@ -238,10 +251,10 @@ export default function WorkOrdersScreen() {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(order => {
-        const categoryName = SimpleProblemCategoryService.getCategoryFullName(order.type) || order.type;
+        const typeName = order.typeName || order.type || '';
         return order.title.toLowerCase().includes(query) ||
                order.location.toLowerCase().includes(query) ||
-               categoryName.toLowerCase().includes(query);
+               typeName.toLowerCase().includes(query);
       });
     }
 
@@ -264,16 +277,21 @@ export default function WorkOrdersScreen() {
     const normalizedStatus = translateStatus(status);
     switch (normalizedStatus) {
       case '待分配':
+      case '待派发':
         return '#F59E0B';
       case '已分配':
+      case '已派发':
         return '#3B82F6';
       case '待接收':
+      case '待处理':
         return '#F59E0B';
       case '处理中':
         return '#8B5CF6';
       case '已完成':
         return '#10B981';
       case '待审核':
+      case '待发起人确认':
+      case '待复核':
         return '#F59E0B';
       case '已取消':
         return '#6B7280';
@@ -284,17 +302,21 @@ export default function WorkOrdersScreen() {
 
   // Translate backend status to display status based on user role
   const translateStatus = (status: string): string => {
-    // 对维护员和巡检员，assigned 状态显示为"待接收"
-    if ((userRoleId === 'R003' || userRoleId === 'R004') && status === 'assigned') {
-      return '待接收';
+    // 对维护员和巡检员，dispatched 状态显示为"待处理"
+    if ((userRoleId === 'R003' || userRoleId === 'R004') && status === 'dispatched') {
+      return '待处理';
     }
     
     const statusMap: { [key: string]: string } = {
       'pending': '待分配',
+      'pending_dispatch': '待派发',
+      'dispatched': '已派发',
       'assigned': '已分配', 
       'processing': '处理中',
       'completed': '已完成',
       'pending_review': '待审核',
+      'pending_reporter_confirm': '待发起人确认',
+      'pending_final_review': '待复核',
       'cancelled': '已取消',
     };
     return statusMap[status?.toLowerCase()] || status;
@@ -350,7 +372,7 @@ export default function WorkOrdersScreen() {
         <View style={styles.workOrderType}>
           <MaterialIcons name="category" size={14} color="#6B7280" />
           <Text style={styles.workOrderTypeText}>
-            {SimpleProblemCategoryService.getCategoryFullName(item.type) || item.type}
+            {item.typeName || item.type || '未分类'}
           </Text>
         </View>
         <View
@@ -459,6 +481,7 @@ export default function WorkOrdersScreen() {
           )}
         />
       </LinearGradient>
+      <Toast />
     </SafeAreaWrapper>
   );
 }

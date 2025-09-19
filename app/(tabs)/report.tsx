@@ -18,6 +18,7 @@ import { useAppContext } from '@/contexts/AppContext';
 import PhotoPicker from '@/components/PhotoPicker';
 import CategorySelector from '@/components/CategorySelector';
 import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
+import ImageUploadService from '@/utils/ImageUploadService';
 
 export default function ReportScreen() {
   const {
@@ -30,8 +31,8 @@ export default function ReportScreen() {
     saveOfflineReport,
     isOfflineMode,
     submitReport,
-    uploadFile,
     isLoading,
+    currentUser,
   } = useAppContext();
 
   const insets = useSafeAreaInsets();
@@ -75,7 +76,10 @@ export default function ReportScreen() {
     }
 
     try {
-      // 准备报告数据
+      // 图片已经在选择时上传，photos数组中已经是CDN URL
+      // 不需要再次上传，直接使用
+      
+      // 准备报告数据（直接使用已上传的图片URL）
       const reportData = {
         category: selectedCategoryId,
         selectedItems: [selectedCategoryName],
@@ -89,10 +93,10 @@ export default function ReportScreen() {
           }
         },
         priority: priority.toLowerCase(), // 转换为小写以匹配后端
-        photos: photos,
+        photos: photos, // 直接使用photos数组，已经是CDN URL
         reporterInfo: {
-          name: '当前用户', // TODO: 从用户上下文获取
-          phone: ''
+          name: currentUser?.name || '当前用户',
+          phone: currentUser?.phone || ''
         }
       };
 
@@ -870,8 +874,19 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     marginTop: 24,
-    borderRadius: 8,
-    overflow: 'hidden',
+    borderRadius: 12,
+    backgroundColor: '#6366F1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    gap: 8,
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   submitGradient: {
     paddingVertical: 14,
@@ -887,7 +902,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   submitButtonDisabled: {
-    opacity: 0.5,
+    backgroundColor: '#D1D5DB',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   // 简化样式
   simpleStepIndicator: {

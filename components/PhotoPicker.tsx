@@ -7,9 +7,12 @@ import {
   Image,
   FlatList,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import ImageUploadService from '@/utils/ImageUploadService';
+import { Toast } from '@/components/CustomToast';
 
 interface PhotoPickerProps {
   title: string;
@@ -73,12 +76,22 @@ export default function PhotoPicker({
       });
 
       if (!result.canceled && result.assets[0]) {
-        const newPhotos = [...photos, result.assets[0].uri];
-        onPhotosChange(newPhotos);
+        // 立即上传图片
+        Toast.show({ message: '正在上传图片...', type: 'info' });
+        const uploadResult = await ImageUploadService.uploadImage(result.assets[0].uri);
+        
+        if (uploadResult.success && uploadResult.data) {
+          // 使用CDN URL而不是本地URI
+          const newPhotos = [...photos, uploadResult.data.url];
+          onPhotosChange(newPhotos);
+          Toast.show({ message: '图片上传成功', type: 'success' });
+        } else {
+          Toast.show({ message: uploadResult.message || '上传失败，请重试', type: 'error' });
+        }
       }
     } catch (error) {
       console.error('Camera error:', error);
-      Alert.alert('错误', '拍照失败，请重试');
+      Toast.show({ message: '拍照失败，请重试', type: 'error' });
     } finally {
       setIsLoading(false);
     }
@@ -98,12 +111,22 @@ export default function PhotoPicker({
       });
 
       if (!result.canceled && result.assets[0]) {
-        const newPhotos = [...photos, result.assets[0].uri];
-        onPhotosChange(newPhotos);
+        // 立即上传图片
+        Toast.show({ message: '正在上传图片...', type: 'info' });
+        const uploadResult = await ImageUploadService.uploadImage(result.assets[0].uri);
+        
+        if (uploadResult.success && uploadResult.data) {
+          // 使用CDN URL而不是本地URI
+          const newPhotos = [...photos, uploadResult.data.url];
+          onPhotosChange(newPhotos);
+          Toast.show({ message: '图片上传成功', type: 'success' });
+        } else {
+          Toast.show({ message: uploadResult.message || '上传失败，请重试', type: 'error' });
+        }
       }
     } catch (error) {
       console.error('Gallery error:', error);
-      Alert.alert('错误', '选择照片失败，请重试');
+      Toast.show({ message: '选择照片失败，请重试', type: 'error' });
     } finally {
       setIsLoading(false);
     }
@@ -145,13 +168,17 @@ export default function PhotoPicker({
       onPress={showImageOptions}
       disabled={isLoading}
     >
-      <MaterialIcons 
-        name={isLoading ? "hourglass-empty" : "add-photo-alternate"} 
-        size={24} 
-        color="#9CA3AF" 
-      />
-      <Text style={styles.addPhotoText}>
-        {isLoading ? '处理中...' : '添加照片'}
+      {isLoading ? (
+        <ActivityIndicator size="small" color="#6366F1" />
+      ) : (
+        <MaterialIcons 
+          name="add-photo-alternate" 
+          size={24} 
+          color="#9CA3AF" 
+        />
+      )}
+      <Text style={[styles.addPhotoText, isLoading && styles.addPhotoTextDisabled]}>
+        {isLoading ? '图片上传中' : '添加照片'}
       </Text>
     </TouchableOpacity>
   );
@@ -254,13 +281,18 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   addPhotoButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.6,
+    backgroundColor: '#F3F4F6',
   },
   addPhotoText: {
     fontSize: 10,
     color: '#6B7280',
     marginTop: 4,
     textAlign: 'center',
+  },
+  addPhotoTextDisabled: {
+    color: '#6366F1',
+    fontWeight: '500',
   },
   emptyState: {
     alignItems: 'center',

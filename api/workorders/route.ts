@@ -2,6 +2,9 @@
  * 工单管理 API
  * GET /api/workorders - 获取工单列表
  * POST /api/workorders - 创建新工单
+ * 
+ * 注意：本期项目使用前端权限控制，API层权限验证暂停
+ * TODO: 后续版本将启用API层权限中间件进行严格验证
  */
 
 import { NextRequest } from 'next/server'
@@ -14,6 +17,14 @@ import {
 } from '@/lib/supabase'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-key'
+
+// TODO: 后续启用API层权限控制时，使用以下导入
+// import { 
+//   requireAnyPermission,
+//   requirePermission,
+//   PermissionContext 
+// } from '@/lib/auth/permission-middleware'
+// import { WORKORDER_PERMISSIONS, ROLES } from '@/lib/permissions/constants'
 
 // GET - 获取工单列表
 export async function GET(request: NextRequest) {
@@ -67,7 +78,8 @@ export async function GET(request: NextRequest) {
         ),
         areas:area_id (
           id,
-          name
+          name,
+          code
         ),
         creator:creator_id (
           id,
@@ -84,6 +96,25 @@ export async function GET(request: NextRequest) {
         reviewer:reviewer_id (
           id,
           name
+        ),
+        results:workorder_results (
+          id,
+          result_type,
+          before_images,
+          after_images,
+          description,
+          actual_cost,
+          time_spent,
+          created_at
+        ),
+        status_history:workorder_status_history (
+          id,
+          from_status,
+          to_status,
+          changed_by,
+          change_reason,
+          created_at,
+          user:users!workorder_status_history_changed_by_fkey(name)
         )
       `, { count: 'exact' })
       .order('created_at', { ascending: false })
@@ -106,30 +137,38 @@ export async function GET(request: NextRequest) {
       query = query.eq('assignee_id', assignee)
     }
     
-    // 角色权限过滤
-    // R001(ADMIN) 和 R002(MONITOR_MANAGER) 可以查看所有工单
-    // R006(MAINTENANCE_SUPERVISOR) 只能查看自己负责区域的工单
-    // R003(MAINTAINER) 和 R004(INSPECTOR) 不应该在Web端查看（他们使用移动端）
-    if (decoded.roleCode === 'MAINTENANCE_SUPERVISOR') {
-      // 获取主管负责的区域
-      const { data: supervisorAreas } = await supabase
-        .from('river_management_areas')
-        .select('id')
-        .eq('supervisor_id', decoded.userId)
-      
-      const areaIds = supervisorAreas?.map(area => area.id) || []
-      
-      if (areaIds.length > 0) {
-        // 查看自己负责区域的工单，或者自己是supervisor_id的工单
-        query = query.or(`area_id.in.(${areaIds.join(',')}),supervisor_id.eq.${decoded.userId}`)
-      } else {
-        // 如果没有负责的区域，只能看到自己是supervisor_id的工单
-        query = query.eq('supervisor_id', decoded.userId)
-      }
-    } else if (!['ADMIN', 'MONITOR_MANAGER'].includes(decoded.roleCode)) {
+    // 权限控制：超级管理员不设限，区域管理员只能查看自己区域的工单
+    const isAdmin = decoded.userId === 'USER_ADMIN' || 
+                    decoded.username === 'admin' || 
+                    ['ADMIN', 'admin', 'R001'].includes(decoded.roleCode)
+    
+    if (!isAdmin) {
+      // 角色权限过滤
+      // R002(MONITOR_MANAGER) 可以查看所有工单
+      // R006(MAINTENANCE_SUPERVISOR) 只能查看自己负责区域的工单
       // 其他角色不应该访问工单列表
-      return errorResponse('无权限访问工单列表', 403)
+      if (decoded.roleCode === 'MAINTENANCE_SUPERVISOR' || decoded.roleCode === 'R006') {
+        // 获取主管负责的区域
+        const { data: supervisorAreas } = await supabase
+          .from('river_management_areas')
+          .select('id')
+          .eq('supervisor_id', decoded.userId)
+        
+        const areaIds = supervisorAreas?.map(area => area.id) || []
+        
+        if (areaIds.length > 0) {
+          // 查看自己负责区域的工单，或者自己是supervisor_id的工单
+          query = query.or(`area_id.in.(${areaIds.join(',')}),supervisor_id.eq.${decoded.userId}`)
+        } else {
+          // 如果没有负责的区域，只能看到自己是supervisor_id的工单
+          query = query.eq('supervisor_id', decoded.userId)
+        }
+      } else if (!['MONITOR_MANAGER', 'monitor_manager', 'R002'].includes(decoded.roleCode)) {
+        // 其他角色不应该访问工单列表
+        return errorResponse('无权限访问工单列表', 403)
+      }
     }
+    // 超级管理员可以查看所有工单，不添加任何过滤条件
     
     const { data: workorders, error, count } = await query
     
@@ -138,12 +177,8 @@ export async function GET(request: NextRequest) {
       return errorResponse('获取工单列表失败', 500)
     }
     
-    return successResponse({
-      data: workorders || [],
-      total: count || 0,
-      page,
-      limit
-    })
+    // 直接返回工单数组，保持与其他API格式一致
+    return successResponse(workorders || [])
     
   } catch (error) {
     console.error('Get workorders error:', error)
@@ -179,10 +214,14 @@ export async function POST(request: NextRequest) {
       priority,
       point_id,
       area_id,
+      river_id,
       location,
       coordinates,
       assignee_id,
-      expected_complete_at
+      expected_complete_at,
+      photos,
+      workorder_source,
+      notes
     } = body
     
     // 验证必填字段
@@ -223,16 +262,19 @@ export async function POST(request: NextRequest) {
         title,
         description,
         priority: priority || 'normal',
-        status: assignee_id ? 'assigned' : 'pending',
+        status: assignee_id ? 'assigned' : workorder_source === 'manual' ? 'pending_dispatch' : 'pending',
         sla_status: 'active',
         department_id: decoded.departmentId || null,
         point_id: point_id || null,
         area_id: area_id || null,
+        river_id: river_id || null,
         location,
         coordinates,
         creator_id: decoded.userId,
         assignee_id: assignee_id || null,
-        source: alarm_id ? 'alarm' : report_id ? 'report' : 'manual',
+        workorder_source: workorder_source || (alarm_id ? 'ai' : report_id ? 'report' : 'manual'),
+        photos: photos ? JSON.stringify(photos) : null,
+        notes: notes || null,
         assigned_at: assignee_id ? new Date().toISOString() : null,
         expected_complete_at,
         created_at: new Date().toISOString(),

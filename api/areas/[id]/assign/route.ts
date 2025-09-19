@@ -37,7 +37,9 @@ export async function POST(
     const decoded = jwt.verify(token, JWT_SECRET) as any
     
     // 只有系统管理员可以分配区域
-    if (decoded.roleCode !== 'ADMIN') {
+    // 支持多种角色代码格式
+    const allowedRoles = ['ADMIN', 'admin', 'R001']
+    if (!allowedRoles.includes(decoded.roleCode) && !allowedRoles.includes(decoded.roleId)) {
       return errorResponse('只有系统管理员可以分配区域', 403)
     }
     

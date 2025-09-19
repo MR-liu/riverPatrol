@@ -147,22 +147,30 @@ export async function GET(
       return errorResponse('获取工单详情失败', 500)
     }
     
-    // 权限检查
-    // R006只能查看自己负责区域的工单
-    if (decoded.roleCode === 'MAINTENANCE_SUPERVISOR') {
-      const { data: supervisorArea } = await supabase
-        .from('river_management_areas')
-        .select('id')
-        .eq('supervisor_id', decoded.userId)
-        .eq('id', workorder.area_id)
-        .single()
-      
-      if (!supervisorArea && workorder.supervisor_id !== decoded.userId) {
-        return errorResponse('无权限查看此工单', 403)
+    // 权限控制：超级管理员不设限，区域管理员只能查看自己区域的工单
+    const isAdmin = decoded.userId === 'USER_ADMIN' || 
+                    decoded.username === 'admin' || 
+                    ['ADMIN', 'admin', 'R001'].includes(decoded.roleCode)
+    
+    if (!isAdmin) {
+      // 权限检查
+      // R006只能查看自己负责区域的工单
+      if (decoded.roleCode === 'MAINTENANCE_SUPERVISOR' || decoded.roleCode === 'R006') {
+        const { data: supervisorArea } = await supabase
+          .from('river_management_areas')
+          .select('id')
+          .eq('supervisor_id', decoded.userId)
+          .eq('id', workorder.area_id)
+          .single()
+        
+        if (!supervisorArea && workorder.supervisor_id !== decoded.userId) {
+          return errorResponse('无权限查看此工单', 403)
+        }
+      } else if (!['MONITOR_MANAGER', 'monitor_manager', 'R002'].includes(decoded.roleCode)) {
+        return errorResponse('无权限查看工单详情', 403)
       }
-    } else if (!['ADMIN', 'MONITOR_MANAGER'].includes(decoded.roleCode)) {
-      return errorResponse('无权限查看工单详情', 403)
     }
+    // 超级管理员可以查看所有工单详情
     
     return successResponse({
       workorder
@@ -219,22 +227,30 @@ export async function PUT(
       return errorResponse('工单不存在', 404)
     }
     
-    // 权限检查
-    let canUpdate = false
+    // 权限控制：超级管理员不设限，区域管理员只能操作自己区域的工单
+    const isAdmin = decoded.userId === 'USER_ADMIN' || 
+                    decoded.username === 'admin' || 
+                    ['ADMIN', 'admin', 'R001'].includes(decoded.roleCode)
     
-    if (decoded.roleCode === 'ADMIN' || decoded.roleCode === 'MONITOR_MANAGER') {
-      canUpdate = true
-    } else if (decoded.roleCode === 'MAINTENANCE_SUPERVISOR') {
-      // R006可以更新自己负责区域的工单
-      if (currentWorkorder.area?.supervisor_id === decoded.userId || 
-          currentWorkorder.supervisor_id === decoded.userId) {
+    if (!isAdmin) {
+      // 权限检查
+      let canUpdate = false
+      
+      if (['MONITOR_MANAGER', 'monitor_manager', 'R002'].includes(decoded.roleCode)) {
         canUpdate = true
+      } else if (decoded.roleCode === 'MAINTENANCE_SUPERVISOR' || decoded.roleCode === 'R006') {
+        // R006可以更新自己负责区域的工单
+        if (currentWorkorder.area?.supervisor_id === decoded.userId || 
+            currentWorkorder.supervisor_id === decoded.userId) {
+          canUpdate = true
+        }
+      }
+      
+      if (!canUpdate) {
+        return errorResponse('无权限更新此工单', 403)
       }
     }
-    
-    if (!canUpdate) {
-      return errorResponse('无权限更新此工单', 403)
-    }
+    // 超级管理员可以更新所有工单
     
     // 构建更新数据
     let updateData: any = {
@@ -398,8 +414,12 @@ export async function DELETE(
       return errorResponse('无效的访问令牌', 401)
     }
     
-    // 只有管理员可以删除工单
-    if (decoded.roleCode !== 'ADMIN') {
+    // 权限控制：只有超级管理员可以删除工单
+    const isAdmin = decoded.userId === 'USER_ADMIN' || 
+                    decoded.username === 'admin' || 
+                    ['ADMIN', 'admin', 'R001'].includes(decoded.roleCode)
+    
+    if (!isAdmin) {
       return errorResponse('无权限删除工单', 403)
     }
     

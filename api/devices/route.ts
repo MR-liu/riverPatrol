@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
     
     const supabase = createServiceClient()
     
-    // 构建查询
+    // 构建查询 - 修正monitoring_points关联
     let query = supabase
       .from('devices')
       .select(`
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
           code,
           category
         ),
-        point:monitoring_points(
+        point:monitoring_points!devices_point_id_fkey(
           id,
           name,
           river_id,
@@ -80,8 +80,7 @@ export async function GET(request: NextRequest) {
           river:rivers(
             id,
             name,
-            area_id,
-            area:river_management_areas(
+            area:river_management_areas!fk_rivers_area(
               id,
               name,
               code
@@ -91,36 +90,26 @@ export async function GET(request: NextRequest) {
       `)
       .order('created_at', { ascending: false })
     
-    // 按河道筛选
-    if (riverId) {
-      // 需要通过 monitoring_points 表关联
-      const { data: points } = await supabase
-        .from('monitoring_points')
-        .select('id')
-        .eq('river_id', riverId)
-      
-      if (points) {
-        const pointIds = points.map(p => p.id)
-        query = query.in('point_id', pointIds)
-      }
-    }
+    // 暂时获取所有设备，稍后按river_id过滤
+    // 因为监控点查询有问题，我们先获取所有设备，然后在结果中过滤
     
     // 按区域筛选
     if (areaId) {
-      // 需要通过 monitoring_points -> rivers 关联
+      // 先获取区域下的所有河道
       const { data: rivers } = await supabase
         .from('rivers')
         .select('id')
         .eq('area_id', areaId)
       
-      if (rivers) {
+      if (rivers && rivers.length > 0) {
         const riverIds = rivers.map(r => r.id)
+        // 获取这些河道的所有监控点
         const { data: points } = await supabase
           .from('monitoring_points')
           .select('id')
           .in('river_id', riverIds)
         
-        if (points) {
+        if (points && points.length > 0) {
           const pointIds = points.map(p => p.id)
           query = query.in('point_id', pointIds)
         }
@@ -160,7 +149,12 @@ export async function GET(request: NextRequest) {
     }
     
     // 使用真实数据
-    const devicesData = devices || []
+    let devicesData = devices || []
+    
+    // 如果指定了river_id，在内存中过滤设备
+    if (riverId && devicesData.length > 0) {
+      devicesData = devicesData.filter(device => device.point?.river_id === riverId)
+    }
     
     // 如果没有数据，记录日志
     if (devicesData.length === 0) {
@@ -225,7 +219,9 @@ export async function POST(request: NextRequest) {
     }
     
     // 检查权限：系统管理员或设备管理权限
-    if (decoded.roleCode !== 'ADMIN') {
+    // 支持多种管理员角色代码格式
+    const adminRoles = ['ADMIN', 'admin', 'R001']
+    if (!adminRoles.includes(decoded.roleCode) && !adminRoles.includes(decoded.roleId)) {
       // TODO: 检查具体的设备管理权限
       const hasPermission = await checkDeviceManagePermission(decoded.userId, river.area_id)
       if (!hasPermission) {
@@ -379,7 +375,7 @@ export async function PUT(request: NextRequest) {
       .from('devices')
       .select(`
         *,
-        point:monitoring_points(
+        point:monitoring_points!devices_point_id_fkey(
           id,
           river_id,
           river:rivers(
@@ -396,7 +392,8 @@ export async function PUT(request: NextRequest) {
     }
     
     // 检查权限
-    if (decoded.roleCode !== 'ADMIN') {
+    const adminRoles = ['ADMIN', 'admin', 'R001']
+    if (!adminRoles.includes(decoded.roleCode) && !adminRoles.includes(decoded.roleId)) {
       const hasPermission = await checkDeviceManagePermission(
         decoded.userId, 
         device.point?.river?.area_id
@@ -472,7 +469,7 @@ export async function DELETE(request: NextRequest) {
       .from('devices')
       .select(`
         *,
-        point:monitoring_points(
+        point:monitoring_points!devices_point_id_fkey(
           id,
           river_id,
           river:rivers(
@@ -489,7 +486,7 @@ export async function DELETE(request: NextRequest) {
     }
     
     // 检查权限：只有管理员可以删除设备
-    if (decoded.roleCode !== 'ADMIN') {
+    if (decoded.roleCode !== 'R001') {
       return errorResponse('只有管理员可以删除设备', 403)
     }
     

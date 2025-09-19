@@ -40,7 +40,9 @@ export async function PUT(request: NextRequest) {
     const decoded = jwt.verify(token, JWT_SECRET) as any
     
     // 只有管理员和有用户管理权限的角色可以编辑用户
-    if (decoded.roleCode !== 'ADMIN' && decoded.roleCode !== 'MONITOR_MANAGER') {
+    // 支持多种角色代码格式
+    const allowedRoles = ['ADMIN', 'admin', 'R001', 'MONITOR_MANAGER', 'R002']
+    if (!allowedRoles.includes(decoded.roleCode) && !allowedRoles.includes(decoded.roleId)) {
       return errorResponse('无权限编辑用户', 403)
     }
     
@@ -71,7 +73,9 @@ export async function PUT(request: NextRequest) {
     
     // 防止降级超级管理员
     if (targetUser.role_id === 'R001' && updateData.role_id && updateData.role_id !== 'R001') {
-      if (decoded.roleCode !== 'ADMIN') {
+      // 支持多种管理员角色代码格式
+      const adminRoles = ['ADMIN', 'admin', 'R001']
+      if (!adminRoles.includes(decoded.roleCode) && decoded.roleId !== 'R001') {
         return errorResponse('无权限修改超级管理员角色', 403)
       }
     }

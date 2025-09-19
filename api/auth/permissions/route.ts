@@ -45,7 +45,8 @@ export async function GET(request: NextRequest) {
         role:roles!inner(
           id,
           name,
-          code
+          code,
+          role_code
         )
       `)
       .eq('id', decoded.userId)
@@ -78,6 +79,15 @@ export async function GET(request: NextRequest) {
     const permissions = rolePermissions?.map(rp => rp.permission).filter(Boolean) || []
     const permissionCodes = permissions.map(p => p.code)
 
+    // 调试日志
+    console.log('[API权限] 用户角色信息:', {
+      user_id: user.id,
+      username: user.username,
+      role_id: user.role_id,
+      role_code: user.role?.role_code,  // 使用 role_code 字段
+      role_name: user.role?.name
+    })
+
     // 返回权限信息
     const responseData = {
       user_id: user.id,
@@ -85,11 +95,12 @@ export async function GET(request: NextRequest) {
       role: {
         id: user.role.id,
         name: user.role.name,
-        code: user.role.code
+        code: user.role.role_code  // 返回 R001-R006
       },
+      role_code: user.role.role_code,  // 明确返回 role_code
       permissions: permissionCodes,
       permissionDetails: permissions,
-      isAdmin: user.role.code === 'ADMIN'
+      isAdmin: user.role.role_code === 'R001'  // R001 是系统管理员
     }
 
     return successResponse(responseData)

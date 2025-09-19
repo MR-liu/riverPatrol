@@ -6,7 +6,9 @@ import Constants from 'expo-constants';
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
 // 动态导入通知功能，只在非 Expo Go 环境中使用
+// 注释掉Expo通知，因为我们使用极光推送
 let Notifications: any = null;
+/* 使用极光推送，不使用expo-notifications
 if (!isExpoGo) {
   try {
     Notifications = require('expo-notifications');
@@ -14,6 +16,7 @@ if (!isExpoGo) {
     console.warn('Notifications module not available:', error);
   }
 }
+*/
 
 export interface Message {
   id: string;

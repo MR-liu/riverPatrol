@@ -123,24 +123,24 @@ export async function POST(request: NextRequest) {
     // 开始事务处理
     const now = new Date().toISOString()
     
-    // 1. 创建处理结果记录
-    const resultId = `WR_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    // 1. 创建处理结果记录 - ID限制在20字符内
+    const timestamp = Date.now().toString().slice(-6)
+    const random = Math.random().toString(36).substr(2, 5).toUpperCase()
+    const resultId = `WR_${timestamp}_${random}` // 总长度: 3 + 6 + 1 + 5 = 15
+    
     const { data: result, error: resultError } = await supabase
       .from('workorder_results')
       .insert({
         id: resultId,
         workorder_id,
-        processor_id: userId,
-        process_method,
-        process_result,
-        before_photos: JSON.stringify(before_photos),
-        after_photos: JSON.stringify(after_photos),
-        need_followup,
-        followup_reason,
-        materials_used: materials_used ? JSON.stringify(materials_used) : null,
-        estimated_completion,
-        submitted_at: now,
-        created_at: now
+        result_type: need_followup ? 'partial' : 'completed',
+        description: `处理方法: ${process_method}\n处理结果: ${process_result}`,
+        before_images: before_photos || [], // JSONB字段，直接传数组
+        after_images: after_photos || [],   // JSONB字段，直接传数组
+        materials_used: materials_used || null, // JSONB字段
+        time_spent: null, // 可以后续添加耗时记录
+        created_at: now,
+        updated_at: now
       })
       .select()
       .single()
@@ -180,16 +180,16 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. 记录状态变更历史
+    const historyId = `WSH_${Date.now().toString().slice(-8)}` // 长度: 4 + 8 = 12
     await supabase
       .from('workorder_status_history')
       .insert({
-        id: `WSH_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: historyId,
         workorder_id,
-        old_status: workorder.status,
-        new_status: newStatus,
+        from_status: workorder.status,  // 使用正确的字段名
+        to_status: newStatus,            // 使用正确的字段名
         changed_by: userId,
-        change_reason: statusChangeReason,
-        change_note: `处理方法: ${process_method}`,
+        change_reason: statusChangeReason + ` - 处理方法: ${process_method}`,
         created_at: now
       })
 

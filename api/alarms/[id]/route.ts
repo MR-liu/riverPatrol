@@ -305,7 +305,9 @@ export async function DELETE(
     }
     
     // 只有管理员可以删除告警
-    if (decoded.roleCode !== 'ADMIN') {
+    // 支持多种角色代码格式
+    const allowedRoles = ['ADMIN', 'admin', 'R001']
+    if (!allowedRoles.includes(decoded.roleCode) && !allowedRoles.includes(decoded.roleId)) {
       return errorResponse('无权限删除告警', 403)
     }
     

@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
           id,
           name,
           code,
-          priority,
+          level,
           color
         ),
         monitoring_points:point_id (
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
           id,
           name,
           code,
-          priority,
+          level,
           color
         ),
         monitoring_points:point_id (

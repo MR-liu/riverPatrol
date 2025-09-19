@@ -233,6 +233,12 @@ class EnhancedNotificationService {
   // 注册推送通知
   async registerForPushNotifications(): Promise<void> {
     try {
+      // 使用极光推送，不使用Expo推送通知
+      // 极光推送的注册在JPushService中处理
+      console.log('[EnhancedNotificationService] 使用极光推送，跳过Expo推送注册');
+      return;
+      
+      /* 注释掉Expo推送相关代码，因为我们使用极光推送
       if (!Notifications) {
         console.warn('Push notifications not available in Expo Go');
         return;
@@ -246,6 +252,7 @@ class EnhancedNotificationService {
       await this.registerPushTokenWithServer(token);
       
       console.log('Push token registered:', token);
+      */
     } catch (error) {
       console.error('Register push notifications error:', error);
     }
