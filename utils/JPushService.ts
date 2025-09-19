@@ -61,36 +61,42 @@ class JPushService {
    * 注册所有监听器
    */
   private registerListeners() {
-    // 监听远程通知
-    JPush.addReceiveNotificationListener((notification) => {
+    // 监听远程通知 (3.2.0版本使用 addNotificationListener)
+    JPush.addNotificationListener((notification) => {
       console.log('[JPush] 收到远程通知:', notification);
       this.handleRemoteNotification(notification);
+      // 如果是点击通知打开APP，也处理打开事件
+      if (notification.notificationEventType === 'notificationOpened') {
+        this.handleNotificationOpen(notification);
+      }
     });
 
-    // 监听本地通知
-    JPush.addReceiveOpenNotificationListener((notification) => {
-      console.log('[JPush] 打开通知:', notification);
+    // 监听本地通知 (使用 addLocalNotificationListener)
+    JPush.addLocalNotificationListener((notification) => {
+      console.log('[JPush] 收到本地通知:', notification);
       this.handleNotificationOpen(notification);
     });
 
     // 监听自定义消息
-    JPush.addReceiveCustomMsgListener((message) => {
+    JPush.addCustomMessageListener((message) => {
       console.log('[JPush] 收到自定义消息:', message);
       this.handleCustomMessage(message);
     });
 
-    // 监听RegistrationID变化
-    JPush.addGetRegistrationIdListener((registrationId) => {
-      console.log('[JPush] RegistrationID更新:', registrationId);
-      this.registrationId = registrationId;
-      this.saveRegistrationId(registrationId);
-      this.registerDevice(registrationId);
+    // 监听Tag/Alias操作结果
+    JPush.addTagAliasListener((result) => {
+      console.log('[JPush] Tag/Alias操作结果:', result);
     });
 
     // 监听连接状态
     JPush.addConnectEventListener((connected) => {
       console.log('[JPush] 连接状态:', connected ? '已连接' : '已断开');
     });
+    
+    // 初始化后主动获取RegistrationID
+    setTimeout(() => {
+      this.getRegistrationId();
+    }, 2000);
   }
 
   /**
@@ -112,7 +118,9 @@ class JPushService {
 
       // 从极光获取
       return new Promise((resolve) => {
-        JPush.getRegistrationID((registrationId: string) => {
+        JPush.getRegistrationID((result: any) => {
+          // 3.2.0版本返回对象格式 {registerID: string}
+          const registrationId = typeof result === 'string' ? result : result?.registerID;
           if (registrationId) {
             console.log('[JPush] 获取到RegistrationID:', registrationId);
             this.registrationId = registrationId;
@@ -144,44 +152,62 @@ class JPushService {
   }
 
   /**
-   * 注册设备到服务器
+   * 注册设备到服务器（内部使用）
    */
   private async registerDevice(registrationId: string) {
     try {
-      const user = await SupabaseService.getCurrentUser();
-      if (!user) {
-        console.log('[JPush] 用户未登录，跳过设备注册');
-        return;
+      // 暂时只记录日志，实际注册需要在登录后调用 registerDeviceToBackend
+      console.log('[JPush] 获取到RegistrationID，等待用户登录后注册:', registrationId);
+      // 保存到实例变量，登录后使用
+      this.registrationId = registrationId;
+    } catch (error) {
+      console.error('[JPush] 设备注册异常:', error);
+    }
+  }
+
+  /**
+   * 注册设备到后端服务器（需要在登录后调用）
+   */
+  async registerDeviceToBackend(authToken: string): Promise<boolean> {
+    try {
+      if (!this.registrationId) {
+        console.log('[JPush] 没有RegistrationID，无法注册设备');
+        return false;
       }
 
       const deviceInfo = {
-        user_id: user.id,
-        device_id: await DeviceInfo.getUniqueId(),
+        jpush_registration_id: this.registrationId,
         device_type: Platform.OS === 'ios' ? 'iOS' : 'Android',
         device_model: DeviceInfo.getModel(),
         os_version: DeviceInfo.getSystemVersion(),
         app_version: DeviceInfo.getVersion(),
-        jpush_registration_id: registrationId,
-        push_channel: 'jpush',
-        push_enabled: true,
       };
 
-      console.log('[JPush] 注册设备信息:', deviceInfo);
+      console.log('[JPush] 向后端注册设备信息:', deviceInfo);
 
-      // 注册到Supabase
-      const { error } = await SupabaseService.supabase
-        .from('mobile_devices')
-        .upsert(deviceInfo, {
-          onConflict: 'device_id',
-        });
+      // 调用后端API注册设备
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.16:3000';
+      const response = await fetch(`${apiUrl}/api/app-device-register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cookie': `auth-token=${authToken}`,
+        },
+        body: JSON.stringify(deviceInfo),
+      });
 
-      if (error) {
-        console.error('[JPush] 设备注册失败:', error);
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        console.log('[JPush] 设备注册到后端成功:', result.data);
+        return true;
       } else {
-        console.log('[JPush] 设备注册成功');
+        console.error('[JPush] 设备注册到后端失败:', result.error || result.message);
+        return false;
       }
     } catch (error) {
-      console.error('[JPush] 设备注册异常:', error);
+      console.error('[JPush] 设备注册到后端异常:', error);
+      return false;
     }
   }
 
@@ -311,9 +337,13 @@ class JPushService {
    */
   async setTags(tags: string[]) {
     try {
-      JPush.setTags(tags, (result) => {
-        console.log('[JPush] 设置标签结果:', result);
-      });
+      // 3.2.0版本需要传入对象格式
+      const params = {
+        sequence: Date.now(), // 用时间戳作为序列号
+        tags: tags
+      };
+      JPush.updateTags(params);
+      console.log('[JPush] 设置标签:', tags);
     } catch (error) {
       console.error('[JPush] 设置标签失败:', error);
     }
@@ -324,9 +354,13 @@ class JPushService {
    */
   async setAlias(alias: string) {
     try {
-      JPush.setAlias(alias, (result) => {
-        console.log('[JPush] 设置别名结果:', result);
-      });
+      // 3.2.0版本需要传入对象格式
+      const params = {
+        sequence: Date.now(), // 用时间戳作为序列号
+        alias: alias
+      };
+      JPush.setAlias(params);
+      console.log('[JPush] 设置别名:', alias);
     } catch (error) {
       console.error('[JPush] 设置别名失败:', error);
     }

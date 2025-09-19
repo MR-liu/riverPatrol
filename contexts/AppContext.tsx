@@ -353,7 +353,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // 使用数据适配器转换用户数据格式
         const adaptedUser = NewDataAdapter.adaptUser(result.data.user);
         setCurrentUser(adaptedUser);
-        // 登录成功后初始化其他服务 - 将在后面定义的函数中调用
+        
+        // 登录成功后注册设备到后端
+        if (result.data.token) {
+          try {
+            console.log('[AppContext] 登录成功，开始注册设备到后端...');
+            const registered = await JPushService.registerDeviceToBackend(result.data.token);
+            if (registered) {
+              console.log('[AppContext] 设备注册成功');
+            } else {
+              console.log('[AppContext] 设备注册失败，但不影响登录');
+            }
+          } catch (error) {
+            console.error('[AppContext] 设备注册异常:', error);
+            // 设备注册失败不影响登录流程
+          }
+        }
+        
         return true;
       } else {
         // 处理登录失败
