@@ -329,17 +329,149 @@ class MessageService {
   // 加载消息
   async loadMessages(): Promise<void> {
     try {
-      const messagesStr = await AsyncStorage.getItem(this.STORAGE_KEYS.MESSAGES);
-      if (messagesStr) {
-        this.messages = JSON.parse(messagesStr);
+      // 先尝试从后端加载消息
+      const apiMessages = await this.fetchMessagesFromAPI();
+      
+      if (apiMessages && apiMessages.length > 0) {
+        // 如果成功获取后端消息，使用后端数据
+        this.messages = apiMessages;
+        // 保存到本地缓存
+        await this.saveMessages();
+        console.log('[MessageService] 从后端加载了', apiMessages.length, '条消息');
       } else {
-        // 初始化默认消息
-        this.messages = await this.initializeMessages();
+        // 如果后端没有数据或请求失败，尝试从本地缓存加载
+        const messagesStr = await AsyncStorage.getItem(this.STORAGE_KEYS.MESSAGES);
+        if (messagesStr) {
+          this.messages = JSON.parse(messagesStr);
+          console.log('[MessageService] 从本地缓存加载了', this.messages.length, '条消息');
+        } else {
+          // 如果本地也没有，初始化默认消息
+          this.messages = await this.initializeMessages();
+          console.log('[MessageService] 初始化默认消息');
+        }
       }
     } catch (error) {
       console.error('Load messages error:', error);
-      this.messages = [];
+      // 出错时尝试从本地缓存恢复
+      try {
+        const messagesStr = await AsyncStorage.getItem(this.STORAGE_KEYS.MESSAGES);
+        if (messagesStr) {
+          this.messages = JSON.parse(messagesStr);
+        } else {
+          this.messages = [];
+        }
+      } catch (cacheError) {
+        console.error('Load from cache error:', cacheError);
+        this.messages = [];
+      }
     }
+  }
+
+  // 从后端API获取消息
+  private async fetchMessagesFromAPI(): Promise<Message[] | null> {
+    try {
+      // 获取认证token
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) {
+        console.log('[MessageService] 没有认证token，跳过API请求');
+        return null;
+      }
+
+      // 获取API地址
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.50.68:3000';
+      const response = await fetch(`${apiUrl}/api/app-notifications?limit=100`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cookie': `app-auth-token=${token}`,  // 修正cookie名称
+          'Authorization': `Bearer ${token}`,    // 同时支持Authorization header
+        },
+      });
+
+      if (!response.ok) {
+        console.log('[MessageService] API请求失败:', response.status);
+        return null;
+      }
+
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        // 处理返回的数据结构（可能是notifications数组或直接的数据数组）
+        const notifications = result.data.notifications || result.data;
+        
+        // 转换后端数据格式为本地Message格式
+        const messages: Message[] = notifications.map((item: any) => {
+          // 检查用户的已读状态
+          const userNotification = item.user_notifications?.[0];
+          const isRead = userNotification?.is_read || false;
+          const readAt = userNotification?.read_at;
+          
+          return {
+            id: item.id || `msg_${Date.now()}_${Math.random()}`,
+            title: item.title || item.message_title || '系统消息',
+            content: item.content || item.message_content || '',
+            type: this.mapMessageType(item.type || item.message_type),
+            priority: this.mapPriority(item.priority),
+            category: item.category || item.type || item.message_type || '系统通知',
+            isRead: isRead,
+            isStarred: item.is_starred || false,
+            isArchived: item.is_archived || false,
+            timestamp: new Date(item.created_at).getTime(),
+            expiresAt: item.expires_at ? new Date(item.expires_at).getTime() : undefined,
+            readAt: readAt ? new Date(readAt).getTime() : undefined,
+            sender: item.created_by ? {
+              id: item.created_by,
+              name: item.created_by,
+              role: '系统',
+              department: '',
+            } : undefined,
+            relatedWorkOrderId: item.related_id,
+            metadata: item.metadata || {},
+          };
+        });
+        
+        return messages;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('[MessageService] 从API获取消息失败:', error);
+      return null;
+    }
+  }
+
+  // 映射消息类型
+  private mapMessageType(type: string): Message['type'] {
+    const typeMap: { [key: string]: Message['type'] } = {
+      'workorder': 'workorder',
+      'alarm': 'alert',
+      'system': 'system',
+      'reminder': 'reminder',
+      'announcement': 'announcement',
+      'maintenance': 'maintenance',
+      'emergency': 'emergency',
+      'info': 'system',  // 映射info到system
+      'warning': 'alert',  // 映射warning到alert
+      'error': 'emergency',  // 映射error到emergency
+    };
+    return typeMap[type?.toLowerCase()] || 'system';
+  }
+
+  // 映射优先级
+  private mapPriority(priority: string | number): Message['priority'] {
+    const priorityMap: { [key: string]: Message['priority'] } = {
+      '1': 'low',
+      '2': 'normal',
+      '3': 'high',
+      '4': 'urgent',
+      '5': 'critical',
+      'low': 'low',
+      'normal': 'normal',
+      'high': 'high',
+      'urgent': 'urgent',
+      'critical': 'critical',
+    };
+    return priorityMap[String(priority)] || 'normal';
   }
 
   // 保存消息
@@ -427,14 +559,46 @@ class MessageService {
     try {
       const messageIndex = this.messages.findIndex(msg => msg.id === messageId);
       if (messageIndex >= 0) {
+        // 先更新本地状态
         this.messages[messageIndex].isRead = true;
+        this.messages[messageIndex].readAt = Date.now();
         await this.saveMessages();
+        
+        // 同步到后端（不等待结果，避免影响用户体验）
+        this.markAsReadOnServer(messageId).catch(err => 
+          console.error('[MessageService] 同步已读状态到服务器失败:', err)
+        );
+        
         return true;
       }
       return false;
     } catch (error) {
       console.error('Mark as read error:', error);
       return false;
+    }
+  }
+
+  // 在服务器上标记消息为已读
+  private async markAsReadOnServer(messageId: string): Promise<void> {
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) return;
+
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.50.68:3000';
+      const response = await fetch(`${apiUrl}/api/app-notifications/${messageId}/read`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cookie': `app-auth-token=${token}`,  // 修正cookie名称
+          'Authorization': `Bearer ${token}`,    // 同时支持Authorization header
+        },
+      });
+
+      if (!response.ok) {
+        console.error('[MessageService] 标记服务器消息已读失败:', response.status);
+      }
+    } catch (error) {
+      console.error('[MessageService] 标记服务器消息已读异常:', error);
     }
   }
 
@@ -709,25 +873,46 @@ class MessageService {
       const lastSync = await AsyncStorage.getItem(this.STORAGE_KEYS.LAST_SYNC);
       // const since = lastSync ? parseInt(lastSync) : 0;
 
-      // 这里应该调用实际的API来获取新消息
-      // const newMessages = await MessageAPI.getMessagesSince(since);
+      console.log('[MessageService] 开始同步消息...');
       
-      // 模拟获取新消息
-      const mockNewMessages: Message[] = [];
+      // 从服务器获取最新消息
+      const newMessages = await this.fetchMessagesFromAPI();
       
-      for (const message of mockNewMessages) {
-        const existingIndex = this.messages.findIndex(msg => msg.id === message.id);
-        if (existingIndex >= 0) {
-          this.messages[existingIndex] = message;
-        } else {
-          this.messages.unshift(message);
+      if (newMessages && newMessages.length > 0) {
+        // 合并新消息到现有消息列表
+        for (const message of newMessages) {
+          const existingIndex = this.messages.findIndex(msg => msg.id === message.id);
+          if (existingIndex >= 0) {
+            // 更新现有消息（保留本地的已读状态如果服务器没有更新）
+            const localMessage = this.messages[existingIndex];
+            this.messages[existingIndex] = {
+              ...message,
+              isRead: message.isRead || localMessage.isRead,
+            };
+          } else {
+            // 添加新消息
+            this.messages.unshift(message);
+          }
         }
+
+        // 按时间戳排序
+        this.messages.sort((a, b) => b.timestamp - a.timestamp);
+        
+        // 限制本地缓存的消息数量（保留最新的200条）
+        if (this.messages.length > 200) {
+          this.messages = this.messages.slice(0, 200);
+        }
+        
+        // 保存到本地缓存
+        await this.saveMessages();
+        await AsyncStorage.setItem(this.STORAGE_KEYS.LAST_SYNC, Date.now().toString());
+        
+        console.log('[MessageService] 同步完成，共', this.messages.length, '条消息');
+        return true;
+      } else {
+        console.log('[MessageService] 没有新消息或同步失败，使用本地缓存');
+        return false;
       }
-
-      await this.saveMessages();
-      await AsyncStorage.setItem(this.STORAGE_KEYS.LAST_SYNC, Date.now().toString());
-
-      return true;
     } catch (error) {
       console.error('Sync messages error:', error);
       return false;
