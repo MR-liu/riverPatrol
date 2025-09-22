@@ -7,6 +7,7 @@ import SupabaseService from '@/utils/SupabaseService';
 import NewDataAdapter from '@/utils/NewDataAdapter';
 import { getRoleByCode, getRoleDataScope, PERMISSIONS, hasPermission } from '@/constants/newRolePermissions';
 import JPushService from '@/utils/JPushService';
+import SettingsService from '@/utils/SettingsService';
 
 // Supabase配置 - 使用环境变量
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -253,14 +254,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
   }), []);
 
-  const [userSettings, setUserSettings] = useState<UserSettings>(defaultSettings);
+  const [userSettings, setUserSettingsState] = useState<UserSettings>(defaultSettings);
+  
+  // 包装setUserSettings以同时保存到存储
+  const setUserSettings = useCallback((newSettings: UserSettings | ((prev: UserSettings) => UserSettings)) => {
+    setUserSettingsState((prev) => {
+      const updatedSettings = typeof newSettings === 'function' ? newSettings(prev) : newSettings;
+      // 异步保存到存储
+      SettingsService.saveUserSettings(updatedSettings).catch((error) => {
+        console.error('[AppContext] 保存用户设置失败:', error);
+      });
+      return updatedSettings;
+    });
+  }, []);
 
   const [offlineStats, setOfflineStats] = useState<OfflineStats>({
     workOrdersCount: 0,
     offlineReportsCount: 0,
     cachedPhotosCount: 0,
-    totalStorageSize: '0 B',
+    totalStorageSize: '0 MB',
   });
+  
+  // 计算离线数据统计
+  const calculateOfflineStats = useCallback(async () => {
+    try {
+      // 获取离线工单数
+      const offlineWorkOrders = await AsyncStorage.getItem('offline_workorders');
+      const workOrdersCount = offlineWorkOrders ? JSON.parse(offlineWorkOrders).length : 0;
+      
+      // 获取离线报告数
+      const offlineReports = await AsyncStorage.getItem('offline_reports');
+      const offlineReportsCount = offlineReports ? JSON.parse(offlineReports).length : 0;
+      
+      // 获取缓存照片数
+      const allKeys = await AsyncStorage.getAllKeys();
+      const cachedPhotosCount = allKeys.filter(key => key.startsWith('cached_photo_')).length;
+      
+      // 估算存储大小
+      let totalSize = 0;
+      for (const key of allKeys) {
+        const value = await AsyncStorage.getItem(key);
+        if (value) {
+          totalSize += value.length * 2; // 字符串大约占2字节
+        }
+      }
+      
+      const sizeInMB = (totalSize / (1024 * 1024)).toFixed(2);
+      
+      setOfflineStats({
+        workOrdersCount,
+        offlineReportsCount,
+        cachedPhotosCount,
+        totalStorageSize: `${sizeInMB} MB`,
+      });
+    } catch (error) {
+      console.error('[AppContext] 计算离线统计失败:', error);
+    }
+  }, []);
 
   const [reportForm, setReportForm] = useState<ReportForm>({
     selectedItems: [],
@@ -305,40 +355,77 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const syncOfflineData = useCallback(async (): Promise<void> => {
     try {
+      // 获取离线报告
       const offlineReports = await AsyncStorage.getItem('offline_reports');
       if (offlineReports) {
         const reports = JSON.parse(offlineReports);
-        // 这里可以添加实际的同步逻辑
-        console.log('Syncing offline reports:', reports);
+        let syncedCount = 0;
+        
+        // 同步每个报告
+        for (const report of reports) {
+          try {
+            const token = await AsyncStorage.getItem('authToken');
+            if (!token) continue;
+            
+            const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+            const response = await fetch(`${API_URL}/api/app-problem-report`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(report)
+            });
+            
+            if (response.ok) {
+              syncedCount++;
+            } else {
+              console.error('同步报告失败:', report);
+            }
+          } catch (error) {
+            console.error('同步单个报告失败:', error);
+          }
+        }
+        
+        console.log(`同步完成: ${syncedCount}/${reports.length} 个报告成功`);
         
         // 同步成功后清除离线数据
-        await AsyncStorage.removeItem('offline_reports');
-        setOfflineStats(prev => ({
-          ...prev,
-          offlineReportsCount: 0,
-        }));
+        if (syncedCount > 0) {
+          await AsyncStorage.removeItem('offline_reports');
+        }
       }
+      
+      // 重新计算统计
+      await calculateOfflineStats();
     } catch (error) {
       console.error('Sync offline data error:', error);
       throw error;
     }
-  }, []);
+  }, [calculateOfflineStats]);
 
   const clearOfflineData = useCallback(async (): Promise<boolean> => {
     try {
-      await AsyncStorage.multiRemove(['offline_reports', 'cached_work_orders']);
-      setOfflineStats({
-        workOrdersCount: 0,
-        offlineReportsCount: 0,
-        cachedPhotosCount: 0,
-        totalStorageSize: '0 B',
-      });
+      // 清除离线数据
+      const allKeys = await AsyncStorage.getAllKeys();
+      const offlineKeys = allKeys.filter(key => 
+        key.startsWith('offline_') || 
+        key.startsWith('cached_') ||
+        key.includes('_cached')
+      );
+      
+      if (offlineKeys.length > 0) {
+        await AsyncStorage.multiRemove(offlineKeys);
+      }
+      
+      // 重新计算统计
+      await calculateOfflineStats();
+      
       return true;
     } catch (error) {
       console.error('Clear offline data error:', error);
       return false;
     }
-  }, []);
+  }, [calculateOfflineStats]);
 
   // 新增API方法
   const loginWithBackend = useCallback(async (username: string, password: string): Promise<boolean> => {
@@ -914,6 +1001,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
           console.error('[AppContext] 初始化超时，强制完成');
           setIsInitializing(false);
         }, 10000); // 10秒超时
+        
+        // 加载用户设置
+        try {
+          const loadedSettings = await SettingsService.getUserSettings();
+          setUserSettings(loadedSettings);
+          console.log('[AppContext] 用户设置加载完成');
+        } catch (error) {
+          console.warn('[AppContext] 用户设置加载失败，使用默认设置:', error);
+        }
+        
+        // 计算离线数据统计
+        await calculateOfflineStats();
         
         try {
           // 初始化问题分类服务（设置超时）

@@ -26,9 +26,17 @@ const deviceUnregisterSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    // 验证用户权限
+    // 验证用户权限 - 支持cookie和Bearer token两种认证方式
     const cookieStore = await cookies()
-    const token = cookieStore.get('auth-token')?.value
+    let token = cookieStore.get('auth-token')?.value || cookieStore.get('app-auth-token')?.value
+    
+    // 如果cookie中没有token，尝试从Authorization header获取
+    if (!token) {
+      const authHeader = request.headers.get('authorization')
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7)
+      }
+    }
     
     if (!token) {
       return errorResponse('未授权访问', 401)

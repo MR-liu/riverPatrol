@@ -3,6 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CustomHeader } from './CustomHeader';
+import { useTheme } from '@/hooks/useTheme';
 
 interface PageContainerProps {
   title: string;
@@ -22,19 +23,27 @@ export function PageContainer({
   rightButton,
   children,
   backgroundColor,
-  headerBackgroundColor = '#3B82F6'
+  headerBackgroundColor
 }: PageContainerProps) {
+  const { theme } = useTheme();
+  
+  const finalHeaderBg = headerBackgroundColor || theme.colors.headerBackground;
+  
   return (
-    <View style={[styles.container, { backgroundColor: headerBackgroundColor }]}>
+    <View style={[styles.container, { backgroundColor: finalHeaderBg }]}>
       <CustomHeader
         title={title}
         onBack={onBack}
         rightButton={rightButton}
-        backgroundColor={headerBackgroundColor}
+        backgroundColor={finalHeaderBg}
       />
       
       <LinearGradient
-        colors={backgroundColor ? [backgroundColor] : ['#F8FAFC', '#EBF4FF', '#E0E7FF']}
+        colors={backgroundColor ? [backgroundColor] : [
+          theme.colors.gradientStart,
+          theme.colors.gradientMiddle,
+          theme.colors.gradientEnd
+        ]}
         style={styles.background}
       >
         {children}

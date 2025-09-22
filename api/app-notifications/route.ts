@@ -60,33 +60,34 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceClient()
     
-    // 构建查询
+    // 构建查询 - 查询notifications表和user_notifications关联表
     let query = supabase
-      .from('user_messages')
+      .from('notifications')
       .select(`
         *,
-        sender:users!user_messages_sender_id_fkey(id, name, username)
+        user_notifications!inner(
+          id,
+          is_read,
+          read_at,
+          user_id
+        )
       `, { count: 'exact' })
-      .eq('user_id', userId)
+      .eq('user_notifications.user_id', userId)
       .order('created_at', { ascending: false })
 
     // 应用过滤条件
     if (type) {
-      query = query.eq('message_type', type)
+      query = query.eq('type', type)  // notifications表使用type字段
     }
 
     if (isRead !== null) {
-      query = query.eq('is_read', isRead === 'true')
+      query = query.eq('user_notifications.is_read', isRead === 'true')
     }
 
-    // 排除已归档的消息（除非特别请求）
-    const includeArchived = searchParams.get('include_archived') === 'true'
-    if (!includeArchived) {
-      query = query.eq('is_archived', false)
-    }
+    // notifications表没有is_deleted字段，不需要这个过滤
 
-    // 排除过期的消息
-    query = query.or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
+    // 注意：user_messages表没有expires_at字段，暂时移除过期消息的过滤
+    // 如果需要过期功能，需要在数据库中添加该字段
 
     // 分页
     query = query.range(offset, offset + limit - 1)
@@ -100,18 +101,16 @@ export async function GET(request: NextRequest) {
 
     // 获取未读消息统计
     const { data: unreadStats } = await supabase
-      .from('user_messages')
-      .select('message_type')
+      .from('user_notifications')
+      .select('*, notifications!inner(type)')
       .eq('user_id', userId)
       .eq('is_read', false)
-      .eq('is_archived', false)
-      .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
 
     const unreadSummary = {
       total: unreadStats?.length || 0,
-      workorder: unreadStats?.filter(n => n.message_type === 'workorder').length || 0,
-      alarm: unreadStats?.filter(n => n.message_type === 'alarm').length || 0,
-      system: unreadStats?.filter(n => n.message_type === 'system').length || 0
+      workorder: unreadStats?.filter((n: any) => n.notifications?.type === 'workorder').length || 0,
+      alarm: unreadStats?.filter((n: any) => n.notifications?.type === 'alarm').length || 0,
+      system: unreadStats?.filter((n: any) => n.notifications?.type === 'system').length || 0
     }
 
     return successResponse({
@@ -170,8 +169,8 @@ export async function POST(request: NextRequest) {
       related_type, // 关联业务类型
       related_id, // 关联业务ID
       action_url, // 操作链接
-      action_text, // 操作按钮文本
-      expires_at // 过期时间
+      action_text // 操作按钮文本
+      // expires_at // 过期时间 - 暂时移除，因为数据库表没有这个字段
     } = body
 
     if (!title || !content || !message_type) {
@@ -209,51 +208,60 @@ export async function POST(request: NextRequest) {
       return errorResponse('未找到目标用户', 400)
     }
 
-    // 批量创建通知记录
-    const notifications = targetUserIds.map(userId => ({
-      id: `MSG_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${userId}`,
-      user_id: userId,
+    // 不再直接创建user_messages，而是创建通知主表记录
+    const timestamp = Date.now().toString().slice(-10)
+    const notificationId = `N${timestamp}`
+    
+    // 创建主通知记录
+    const notification = {
+      id: notificationId,
       title,
       content,
-      message_type,
+      type: message_type, // 使用type字段而不是message_type
       priority,
-      category: related_type || message_type,
+      send_type: target_user_id ? 'user' : 'role',
+      target_users: target_user_id ? [target_user_id] : targetUserIds,
+      target_roles: target_role_id ? [target_role_id] : null,
       related_type,
       related_id,
-      sender_id: senderId,
       action_url,
-      action_text,
-      expires_at,
+      metadata: {
+        action_text,
+        sender_id: senderId,
+        created_from: 'app_api'
+      },
+      created_by: senderId,
       created_at: new Date().toISOString()
-    }))
+    }
 
-    const { data: createdNotifications, error: insertError } = await supabase
-      .from('user_messages')
-      .insert(notifications)
-      .select('*')
+    const { data: createdNotification, error: insertError } = await supabase
+      .from('notifications')
+      .insert(notification)
+      .select()
+      .single()
 
     if (insertError) {
       console.error('创建通知失败:', insertError)
       return errorResponse('创建通知失败', 500)
     }
 
-    // 同时添加到通知队列用于推送
-    const queueItems = targetUserIds.map(userId => ({
-      id: `NQ_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${userId}`,
+    // 创建用户通知关联记录
+    const userNotifications = targetUserIds.map((userId, index) => ({
+      id: `UN${timestamp}${index.toString().padStart(3, '0')}`,
+      notification_id: notificationId,
       user_id: userId,
-      type: message_type,
-      title,
-      content,
-      priority,
-      related_type,
-      related_id,
-      status: 'pending',
+      is_read: false,
+      read_at: null,
       created_at: new Date().toISOString()
     }))
 
-    await supabase
-      .from('notification_queue')
-      .insert(queueItems)
+    const { error: linkError } = await supabase
+      .from('user_notifications')
+      .insert(userNotifications)
+    
+    if (linkError) {
+      console.error('创建用户通知关联失败:', linkError)
+    }
     
     // 发送极光推送通知
     if (process.env.ENABLE_PUSH_NOTIFICATIONS === 'true') {
@@ -304,7 +312,7 @@ export async function POST(request: NextRequest) {
     })
 
     return successResponse({
-      notifications: createdNotifications,
+      notification: createdNotification,
       target_users: targetUserIds.length,
       queued_for_push: true
     }, `通知创建成功，已发送给 ${targetUserIds.length} 个用户`)

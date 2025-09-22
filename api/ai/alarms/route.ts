@@ -274,7 +274,129 @@ export async function POST(request: NextRequest) {
     //     })
     // }
     
-    // 9. 创建通知（通知监控中心主管R002）
+    // 9. 自动创建工单（针对紧急和高级别告警）
+    let workorderId = null
+    if (data.level === 'urgent' || data.level === 'high') {
+      // 生成工单ID
+      const today = new Date()
+      const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
+      
+      const { data: lastWorkorder } = await supabase
+        .from('workorders')
+        .select('id')
+        .like('id', `WO-${dateStr}-%`)
+        .order('id', { ascending: false })
+        .limit(1)
+        .single()
+      
+      let nextNumber = 1
+      if (lastWorkorder) {
+        const lastNumber = parseInt(lastWorkorder.id.split('-')[2])
+        nextNumber = lastNumber + 1
+      }
+      
+      workorderId = `WO-${dateStr}-${nextNumber.toString().padStart(5, '0')}`
+      
+      // 根据监测点查找对应的区域
+      const { data: areas } = await supabase
+        .from('river_management_areas')
+        .select('id, supervisor_id, maintenance_worker_ids, monitoring_point_ids')
+      
+      const relevantArea = areas?.find(area => 
+        area.monitoring_point_ids?.includes(device.point_id)
+      )
+      
+      // 创建工单
+      const { data: newWorkorder, error: workorderError } = await supabase
+        .from('workorders')
+        .insert({
+          id: workorderId,
+          type_id: 'WT_001', // 默认告警处理类型
+          alarm_id: alarmId,
+          title: `[AI告警] ${data.title}`,
+          description: `AI系统检测到异常\n置信度：${(data.confidence * 100).toFixed(1)}%\n\n${data.description}\n\n位置：${device.monitoring_points.name}`,
+          priority: data.level === 'urgent' ? 'urgent' : 'important',
+          status: 'pending',
+          department_id: device.monitoring_points.department_id,
+          point_id: device.point_id,
+          area_id: relevantArea?.id,
+          location: device.monitoring_points.name,
+          coordinates,
+          images: allImages,
+          creator_id: 'AI_SYSTEM', // AI系统创建
+          source: 'alarm',
+          workorder_source: 'ai',
+          expected_complete_at: new Date(Date.now() + 
+            (data.level === 'urgent' ? 4 : 24) * 60 * 60 * 1000
+          ).toISOString(), // 紧急4小时，其他24小时
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+      
+      if (!workorderError) {
+        // 更新告警状态为处理中
+        await supabase
+          .from('alarms')
+          .update({
+            status: 'processing',
+            confirmed_by: 'AI_SYSTEM',
+            confirmed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', alarmId)
+        
+        // 发送推送通知给区域负责人
+        if (relevantArea) {
+          try {
+            const { sendWorkOrderPush } = await import('@/lib/push-notification.service')
+            
+            let targetUserIds: string[] = []
+            
+            // 添加区域主管
+            if (relevantArea.supervisor_id) {
+              targetUserIds.push(relevantArea.supervisor_id)
+            }
+            
+            // 添加区域维护员
+            if (relevantArea.maintenance_worker_ids && Array.isArray(relevantArea.maintenance_worker_ids)) {
+              targetUserIds = [...targetUserIds, ...relevantArea.maintenance_worker_ids]
+            }
+            
+            // 去重
+            targetUserIds = [...new Set(targetUserIds)]
+            
+            // 检查哪些用户有注册设备
+            if (targetUserIds.length > 0) {
+              const { data: devices } = await supabase
+                .from('mobile_devices')
+                .select('user_id')
+                .in('user_id', targetUserIds)
+                .eq('is_active', true)
+              
+              const usersWithDevices = [...new Set(devices?.map(d => d.user_id) || [])]
+              
+              if (usersWithDevices.length > 0) {
+                await sendWorkOrderPush({
+                  id: workorderId,
+                  type: 'AI告警处理',
+                  location: device.monitoring_points.name,
+                  priority: data.level === 'urgent' ? 'urgent' : 'important',
+                  deadline: newWorkorder.expected_complete_at
+                }, usersWithDevices)
+                
+                console.log(`[AI WorkOrder Push] 已推送给 ${usersWithDevices.length} 个区域负责人`)
+              }
+            }
+          } catch (pushError) {
+            console.error('AI工单推送失败:', pushError)
+          }
+        }
+      }
+    }
+    
+    // 10. 创建通知（通知监控中心主管R002）
     const { data: monitorManagers } = await supabase
       .from('users')
       .select('id')
@@ -286,7 +408,7 @@ export async function POST(request: NextRequest) {
         id: `NOTIF_${Date.now()}_${user.id.slice(-4)}`,
         user_id: user.id,
         title: `新的AI告警：${data.title}`,
-        content: `${device.monitoring_points.river_name} - ${device.name} 检测到异常，置信度：${(data.confidence * 100).toFixed(1)}%`,
+        content: `${device.monitoring_points.river_name} - ${device.name} 检测到异常，置信度：${(data.confidence * 100).toFixed(1)}%${workorderId ? '\n已自动创建工单: ' + workorderId : ''}`,
         type: 'alarm',
         priority: data.level === 'urgent' ? 'high' : 'normal',
         related_type: 'alarm',
@@ -295,12 +417,42 @@ export async function POST(request: NextRequest) {
       }))
       
       await supabase.from('notifications').insert(notifications)
+      
+      // 发送推送通知给监控中心主管
+      try {
+        const { sendAlarmPush } = await import('@/lib/push-notification.service')
+        
+        // 检查监控中心主管是否有注册设备
+        const { data: devices } = await supabase
+          .from('mobile_devices')
+          .select('user_id')
+          .in('user_id', monitorManagers.map(u => u.id))
+          .eq('is_active', true)
+        
+        const usersWithDevices = [...new Set(devices?.map(d => d.user_id) || [])]
+        
+        if (usersWithDevices.length > 0) {
+          await sendAlarmPush({
+            id: alarmId,
+            type: data.alarm_type,
+            location: device.monitoring_points.name,
+            time: data.detected_at || new Date().toISOString(),
+            description: data.description,
+            level: data.level
+          }, usersWithDevices)
+          
+          console.log(`[AI Alarm Push] 已推送给 ${usersWithDevices.length} 个监控中心主管`)
+        }
+      } catch (pushError) {
+        console.error('AI告警推送失败:', pushError)
+      }
     }
     
     return successResponse({
       alarm_id: alarmId,
+      workorder_id: workorderId,
       status: 'success',
-      message: '告警创建成功',
+      message: workorderId ? '告警创建成功，已自动生成工单' : '告警创建成功',
       data: newAlarm
     })
     

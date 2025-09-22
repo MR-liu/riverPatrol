@@ -6,15 +6,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HapticTab } from '@/components/HapticTab';
 import TabBarBackground from '@/components/ui/TabBarBackground';
+import { useTheme } from '@/hooks/useTheme';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { theme, isDark } = useTheme();
   
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#3B82F6',
-        tabBarInactiveTintColor: '#64748b',
+        tabBarActiveTintColor: theme.colors.tabBarActive,
+        tabBarInactiveTintColor: theme.colors.tabBarInactive,
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarBackground: TabBarBackground,
@@ -24,12 +26,12 @@ export default function TabLayout() {
           height: Platform.OS === 'ios' 
             ? 64 + Math.max(insets.bottom, 20) 
             : 64 + Math.max(insets.bottom, 8),
-          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          backgroundColor: isDark ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.95)',
           borderTopWidth: 1,
-          borderTopColor: 'rgba(255, 255, 255, 0.2)',
+          borderTopColor: theme.colors.border,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.1,
+          shadowOpacity: isDark ? 0.3 : 0.1,
           shadowRadius: 12,
           elevation: 8,
           ...Platform.select({

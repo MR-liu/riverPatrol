@@ -24,7 +24,8 @@
       "Bash(./gradlew:*)",
       "Bash(npx eas:*)",
       "Bash(npm uninstall:*)",
-      "Bash(npx expo install:*)"
+      "Bash(npx expo install:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

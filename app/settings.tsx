@@ -16,6 +16,7 @@ import { router } from 'expo-router';
 
 import { useAppContext } from '@/contexts/AppContext';
 import SettingsService, { UserSettings, AppInfo } from '@/utils/SettingsService';
+import { useTheme } from '@/hooks/useTheme';
 
 export default function SettingsScreen() {
   const {
@@ -27,8 +28,10 @@ export default function SettingsScreen() {
     syncOfflineData,
     clearOfflineData,
   } = useAppContext();
+  const { theme, fontSize } = useTheme();
 
-  const handleSettingChange = (category: string, setting: string, value: boolean | string) => {
+  const handleSettingChange = async (category: string, setting: string, value: boolean | string) => {
+    // 更新本地状态
     setUserSettings(prev => ({
       ...prev,
       [category]: {
@@ -37,7 +40,23 @@ export default function SettingsScreen() {
       },
     }));
 
-    Alert.alert('设置已更新', '设置已成功保存');
+    // 保存到存储
+    const success = await SettingsService.updateSetting(
+      category as keyof UserSettings,
+      setting,
+      value
+    );
+    
+    if (success) {
+      // 只在特定设置更改时显示提示
+      if (category === 'privacy' && setting === 'locationTracking') {
+        // 位置追踪设置已经在SettingsService中有提示
+      } else if (category === 'advanced' && setting === 'developerMode') {
+        // 开发者模式已经在SettingsService中有提示
+      } else {
+        // 静默保存，不显示提示
+      }
+    }
   };
 
   const handleOfflineModeToggle = (value: boolean) => {
@@ -93,7 +112,7 @@ export default function SettingsScreen() {
   };
 
   const handleAccountManagement = () => {
-    Alert.alert('账户管理', '账户管理功能开发中，敬请期待');
+    router.push('/account-management');
   };
 
   const handleNetworkSettings = () => {
@@ -118,25 +137,25 @@ export default function SettingsScreen() {
     value: boolean,
     onValueChange: (value: boolean) => void
   ) => (
-    <View style={styles.settingItem}>
+    <View style={[styles.settingItem, { borderBottomColor: theme.colors.borderLight }]}>
       <View style={styles.settingInfo}>
-        <Text style={styles.settingTitle}>{title}</Text>
-        <Text style={styles.settingSubtitle}>{subtitle}</Text>
+        <Text style={[styles.settingTitle, { color: theme.colors.text, fontSize: fontSize(14) }]}>{title}</Text>
+        <Text style={[styles.settingSubtitle, { color: theme.colors.textSecondary, fontSize: fontSize(12) }]}>{subtitle}</Text>
       </View>
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: '#E5E7EB', true: '#93C5FD' }}
-        thumbColor={value ? '#3B82F6' : '#F3F4F6'}
+        trackColor={{ false: theme.colors.border, true: theme.colors.primaryLight }}
+        thumbColor={value ? theme.colors.primary : theme.colors.surface}
       />
     </View>
   );
 
   const renderFontSizeSelector = () => (
-    <View style={styles.settingItem}>
+    <View style={[styles.settingItem, { borderBottomColor: theme.colors.borderLight }]}>
       <View style={styles.settingInfo}>
-        <Text style={styles.settingTitle}>字体大小</Text>
-        <Text style={styles.settingSubtitle}>调整界面字体大小</Text>
+        <Text style={[styles.settingTitle, { color: theme.colors.text, fontSize: fontSize(14) }]}>字体大小</Text>
+        <Text style={[styles.settingSubtitle, { color: theme.colors.textSecondary, fontSize: fontSize(12) }]}>调整界面字体大小</Text>
       </View>
       <View style={styles.fontSizeButtons}>
         {['small', 'medium', 'large'].map((size) => (
@@ -144,13 +163,15 @@ export default function SettingsScreen() {
             key={size}
             style={[
               styles.fontSizeButton,
-              userSettings.appearance.fontSize === size && styles.fontSizeButtonActive,
+              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              userSettings.appearance.fontSize === size && { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
             ]}
             onPress={() => handleSettingChange('appearance', 'fontSize', size)}
           >
             <Text style={[
               styles.fontSizeButtonText,
-              userSettings.appearance.fontSize === size && styles.fontSizeButtonTextActive,
+              { color: theme.colors.textSecondary },
+              userSettings.appearance.fontSize === size && { color: theme.colors.buttonPrimaryText },
             ]}>
               {size === 'small' ? '小' : size === 'medium' ? '中' : '大'}
             </Text>
@@ -161,42 +182,42 @@ export default function SettingsScreen() {
   );
 
   const renderMenuOption = (icon: string, title: string, subtitle: string, onPress: () => void) => (
-    <TouchableOpacity style={styles.menuOption} onPress={onPress}>
+    <TouchableOpacity style={[styles.menuOption, { borderBottomColor: theme.colors.borderLight }]} onPress={onPress}>
       <View style={styles.menuOptionLeft}>
-        <MaterialIcons name={icon as any} size={20} color="#6B7280" />
+        <MaterialIcons name={icon as any} size={20} color={theme.colors.textSecondary} />
         <View style={styles.menuOptionInfo}>
-          <Text style={styles.menuOptionTitle}>{title}</Text>
-          <Text style={styles.menuOptionSubtitle}>{subtitle}</Text>
+          <Text style={[styles.menuOptionTitle, { color: theme.colors.text, fontSize: fontSize(14) }]}>{title}</Text>
+          <Text style={[styles.menuOptionSubtitle, { color: theme.colors.textSecondary, fontSize: fontSize(12) }]}>{subtitle}</Text>
         </View>
       </View>
-      <MaterialIcons name="keyboard-arrow-right" size={20} color="#9CA3AF" />
+      <MaterialIcons name="keyboard-arrow-right" size={20} color={theme.colors.textTertiary} />
     </TouchableOpacity>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.headerBackground }]}>
       {/* 自定义头部 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: theme.colors.headerBackground }]}>
         <TouchableOpacity
           style={styles.headerButton}
           onPress={() => router.back()}
         >
-          <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
+          <MaterialIcons name="arrow-back" size={24} color={theme.colors.headerText} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>系统设置</Text>
+        <Text style={[styles.headerTitle, { color: theme.colors.headerText, fontSize: fontSize(18) }]}>系统设置</Text>
         <View style={styles.headerButton} />
       </View>
 
       <LinearGradient
-        colors={['#F8FAFC', '#EBF4FF', '#E0E7FF']}
+        colors={[theme.colors.gradientStart, theme.colors.gradientMiddle, theme.colors.gradientEnd]}
         style={styles.background}
       >
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* 通知设置 */}
-          <View style={styles.card}>
+          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
             <View style={styles.cardHeader}>
-              <MaterialIcons name="notifications" size={16} color="#374151" />
-              <Text style={styles.cardTitle}>通知设置</Text>
+              <MaterialIcons name="notifications" size={16} color={theme.colors.text} />
+              <Text style={[styles.cardTitle, { color: theme.colors.text, fontSize: fontSize(16) }]}>通知设置</Text>
             </View>
             {renderSettingItem(
               '工单更新通知',
@@ -219,10 +240,10 @@ export default function SettingsScreen() {
           </View>
 
           {/* 外观设置 */}
-          <View style={styles.card}>
+          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
             <View style={styles.cardHeader}>
-              <MaterialIcons name="brightness-6" size={16} color="#374151" />
-              <Text style={styles.cardTitle}>外观设置</Text>
+              <MaterialIcons name="brightness-6" size={16} color={theme.colors.text} />
+              <Text style={[styles.cardTitle, { color: theme.colors.text, fontSize: fontSize(16) }]}>外观设置</Text>
             </View>
             {renderSettingItem(
               '深色主题',
@@ -234,10 +255,10 @@ export default function SettingsScreen() {
           </View>
 
           {/* 隐私设置 */}
-          <View style={styles.card}>
+          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
             <View style={styles.cardHeader}>
-              <MaterialIcons name="security" size={16} color="#374151" />
-              <Text style={styles.cardTitle}>隐私设置</Text>
+              <MaterialIcons name="security" size={16} color={theme.colors.text} />
+              <Text style={[styles.cardTitle, { color: theme.colors.text, fontSize: fontSize(16) }]}>隐私设置</Text>
             </View>
             {renderSettingItem(
               '位置追踪',
@@ -254,10 +275,10 @@ export default function SettingsScreen() {
           </View>
 
           {/* 离线数据管理 */}
-          <View style={styles.card}>
+          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
             <View style={styles.cardHeader}>
-              <MaterialIcons name="cloud-off" size={16} color="#374151" />
-              <Text style={styles.cardTitle}>离线数据管理</Text>
+              <MaterialIcons name="cloud-off" size={16} color={theme.colors.text} />
+              <Text style={[styles.cardTitle, { color: theme.colors.text, fontSize: fontSize(16) }]}>离线数据管理</Text>
             </View>
             {renderSettingItem(
               '离线模式',
@@ -266,24 +287,24 @@ export default function SettingsScreen() {
               handleOfflineModeToggle
             )}
 
-            <View style={styles.offlineStatsContainer}>
-              <Text style={styles.offlineStatsTitle}>离线数据统计</Text>
+            <View style={[styles.offlineStatsContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Text style={[styles.offlineStatsTitle, { color: theme.colors.text, fontSize: fontSize(14) }]}>离线数据统计</Text>
               <View style={styles.offlineStatsGrid}>
                 <View style={styles.offlineStatItem}>
-                  <Text style={styles.offlineStatValue}>{offlineStats.workOrdersCount}</Text>
-                  <Text style={styles.offlineStatLabel}>工单</Text>
+                  <Text style={[styles.offlineStatValue, { color: theme.colors.text, fontSize: fontSize(18) }]}>{offlineStats.workOrdersCount}</Text>
+                  <Text style={[styles.offlineStatLabel, { color: theme.colors.textSecondary, fontSize: fontSize(12) }]}>工单</Text>
                 </View>
                 <View style={styles.offlineStatItem}>
-                  <Text style={styles.offlineStatValue}>{offlineStats.offlineReportsCount}</Text>
-                  <Text style={styles.offlineStatLabel}>待同步</Text>
+                  <Text style={[styles.offlineStatValue, { color: theme.colors.text, fontSize: fontSize(18) }]}>{offlineStats.offlineReportsCount}</Text>
+                  <Text style={[styles.offlineStatLabel, { color: theme.colors.textSecondary, fontSize: fontSize(12) }]}>待同步</Text>
                 </View>
                 <View style={styles.offlineStatItem}>
-                  <Text style={styles.offlineStatValue}>{offlineStats.cachedPhotosCount}</Text>
-                  <Text style={styles.offlineStatLabel}>照片</Text>
+                  <Text style={[styles.offlineStatValue, { color: theme.colors.text, fontSize: fontSize(18) }]}>{offlineStats.cachedPhotosCount}</Text>
+                  <Text style={[styles.offlineStatLabel, { color: theme.colors.textSecondary, fontSize: fontSize(12) }]}>照片</Text>
                 </View>
                 <View style={styles.offlineStatItem}>
-                  <Text style={styles.offlineStatValue}>{offlineStats.totalStorageSize}</Text>
-                  <Text style={styles.offlineStatLabel}>存储空间</Text>
+                  <Text style={[styles.offlineStatValue, { color: theme.colors.text, fontSize: fontSize(18) }]}>{offlineStats.totalStorageSize}</Text>
+                  <Text style={[styles.offlineStatLabel, { color: theme.colors.textSecondary, fontSize: fontSize(12) }]}>存储空间</Text>
                 </View>
               </View>
             </View>
@@ -304,18 +325,18 @@ export default function SettingsScreen() {
           </View>
 
           {/* 其他选项 */}
-          <View style={styles.card}>
+          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
             {renderMenuOption('person', '账户管理', '修改个人信息、密码', handleAccountManagement)}
             {renderMenuOption('wifi', '网络设置', 'WiFi、移动网络配置', handleNetworkSettings)}
             {renderMenuOption('lock', '安全设置', '指纹解锁、应用锁', handleSecuritySettings)}
           </View>
 
           {/* 关于应用 */}
-          <View style={styles.card}>
+          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
             <View style={styles.aboutSection}>
-              <Text style={styles.appName}>智慧河道巡查系统</Text>
-              <Text style={styles.appVersion}>版本 1.0.0</Text>
-              <Text style={styles.appCopyright}>© 2024 智慧河道管理团队</Text>
+              <Text style={[styles.appName, { color: theme.colors.text, fontSize: fontSize(18) }]}>智慧河道巡查系统</Text>
+              <Text style={[styles.appVersion, { color: theme.colors.textSecondary, fontSize: fontSize(14) }]}>版本 1.0.0</Text>
+              <Text style={[styles.appCopyright, { color: theme.colors.textTertiary, fontSize: fontSize(12) }]}>© 2024 智慧河道管理团队</Text>
             </View>
             <View style={styles.aboutButtons}>
               <TouchableOpacity style={styles.aboutButton} onPress={handleCheckUpdate}>

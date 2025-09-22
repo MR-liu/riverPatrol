@@ -5,13 +5,13 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   RefreshControl,
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AttendanceService from '@/utils/AttendanceService';
 import { LoadingState } from '@/components/LoadingState';
@@ -39,6 +39,7 @@ interface AttendanceRecord {
 
 export default function AttendanceRecordsScreen() {
   const { currentUser } = useAppContext();
+  const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -242,21 +243,24 @@ export default function AttendanceRecordsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.back()}
-        >
-          <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>考勤记录</Text>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.push('/attendance-export')}
-        >
-          <MaterialIcons name="file-download" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
+    <View style={styles.container}>
+      {/* Header background that extends to top */}
+      <View style={[styles.headerBackground, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.back()}
+          >
+            <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>考勤记录</Text>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push('/attendance-export')}
+          >
+            <MaterialIcons name="file-download" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <LinearGradient
@@ -356,17 +360,19 @@ export default function AttendanceRecordsScreen() {
           </ScrollView>
         </LoadingState>
       </LinearGradient>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  headerBackground: {
     backgroundColor: '#3B82F6',
   },
   header: {
-    backgroundColor: '#3B82F6',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

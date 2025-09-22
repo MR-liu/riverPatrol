@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   Alert,
   Switch,
   TextInput,
@@ -14,6 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppContext } from '@/contexts/AppContext';
 import ImagePickerModal from '@/components/ImagePickerModal';
@@ -22,6 +22,7 @@ import WorkOrderApiService from '@/utils/WorkOrderApiService';
 
 export default function ProcessResultScreen() {
   const { selectedWorkOrder, setSelectedWorkOrder, workOrders, setWorkOrders } = useAppContext();
+  const insets = useSafeAreaInsets();
   const [processMethod, setProcessMethod] = useState('');
   const [processDescription, setProcessDescription] = useState('');
   const [result, setResult] = useState('');
@@ -143,7 +144,19 @@ ${needFollowUp ? `需要跟进: ${followUpReason}` : ''}
 
   if (!selectedWorkOrder) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
+        <View style={[styles.headerBackground, { paddingTop: insets.top }]}>
+          <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={() => router.back()}
+            >
+              <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>上传处理结果</Text>
+            <View style={styles.headerButton} />
+          </View>
+        </View>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>未找到工单信息</Text>
           <TouchableOpacity
@@ -153,22 +166,24 @@ ${needFollowUp ? `需要跟进: ${followUpReason}` : ''}
             <Text style={styles.backButtonText}>返回</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* 自定义头部 */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.back()}
-        >
-          <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>上传处理结果</Text>
-        <View style={styles.headerButton} />
+    <View style={styles.container}>
+      {/* Header background that extends to top */}
+      <View style={[styles.headerBackground, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.back()}
+          >
+            <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>上传处理结果</Text>
+          <View style={styles.headerButton} />
+        </View>
       </View>
 
       <LinearGradient
@@ -342,17 +357,19 @@ ${needFollowUp ? `需要跟进: ${followUpReason}` : ''}
         maxImages={9}
         existingImages={photos}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  headerBackground: {
     backgroundColor: '#3B82F6',
   },
   header: {
-    backgroundColor: '#3B82F6',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

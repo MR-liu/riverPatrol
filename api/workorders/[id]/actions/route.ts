@@ -316,6 +316,44 @@ export async function POST(
           updateData.actual_hours = actual_hours
         }
         
+        // 发送推送通知给区域主管审核
+        try {
+          const { sendWorkOrderPush } = await import('@/lib/push-notification.service')
+          
+          // 获取区域主管
+          if (workorder.area_id) {
+            const { data: area } = await supabase
+              .from('river_management_areas')
+              .select('supervisor_id')
+              .eq('id', workorder.area_id)
+              .single()
+            
+            if (area?.supervisor_id) {
+              // 检查主管是否有注册设备
+              const { data: devices } = await supabase
+                .from('mobile_devices')
+                .select('user_id')
+                .eq('user_id', area.supervisor_id)
+                .eq('is_active', true)
+              
+              if (devices && devices.length > 0) {
+                await sendWorkOrderPush({
+                  id: workorderId,
+                  type: '工单审核',
+                  location: workorder.location || '未知位置',
+                  priority: workorder.priority,
+                  description: `维护员已完成工单，请审核：${workorder.title}`,
+                  action: 'review_required'
+                }, [area.supervisor_id])
+                
+                console.log(`[WorkOrder Review Push] 已推送审核通知给区域主管: ${area.supervisor_id}`)
+              }
+            }
+          }
+        } catch (pushError) {
+          console.error('工单审核推送通知失败:', pushError)
+        }
+        
         // 创建或更新工单处理结果记录
         if (resolution || attachments?.length > 0) {
           // 先检查是否已存在处理结果
@@ -360,6 +398,44 @@ export async function POST(
         updateData.reviewed_at = now
         updateData.review_note = note
         updateData.review_result = 'approved'
+        
+        // 发送推送通知给监控中心主管进行最终审批
+        try {
+          const { sendWorkOrderPush } = await import('@/lib/push-notification.service')
+          
+          // 获取监控中心主管（R002）
+          const { data: monitorManagers } = await supabase
+            .from('users')
+            .select('id')
+            .eq('role_id', 'R002')
+            .eq('status', 'active')
+          
+          if (monitorManagers && monitorManagers.length > 0) {
+            // 检查哪些主管有注册设备
+            const { data: devices } = await supabase
+              .from('mobile_devices')
+              .select('user_id')
+              .in('user_id', monitorManagers.map(u => u.id))
+              .eq('is_active', true)
+            
+            const usersWithDevices = [...new Set(devices?.map(d => d.user_id) || [])]
+            
+            if (usersWithDevices.length > 0) {
+              await sendWorkOrderPush({
+                id: workorderId,
+                type: '最终审批',
+                location: workorder.location || '未知位置',
+                priority: workorder.priority,
+                description: `工单已通过初审，请进行最终审批：${workorder.title}`,
+                action: 'final_approval_required'
+              }, usersWithDevices)
+              
+              console.log(`[WorkOrder Final Approval Push] 已推送最终审批通知给 ${usersWithDevices.length} 个监控中心主管`)
+            }
+          }
+        } catch (pushError) {
+          console.error('工单最终审批推送通知失败:', pushError)
+        }
         break
         
       case 'reject_review':
@@ -367,6 +443,35 @@ export async function POST(
         updateData.reviewed_at = now
         updateData.review_note = note
         updateData.review_result = 'rejected'
+        
+        // 发送推送通知给维护员重新处理
+        try {
+          if (workorder.assignee_id) {
+            const { sendWorkOrderPush } = await import('@/lib/push-notification.service')
+            
+            // 检查维护员是否有注册设备
+            const { data: devices } = await supabase
+              .from('mobile_devices')
+              .select('user_id')
+              .eq('user_id', workorder.assignee_id)
+              .eq('is_active', true)
+            
+            if (devices && devices.length > 0) {
+              await sendWorkOrderPush({
+                id: workorderId,
+                type: '审核退回',
+                location: workorder.location || '未知位置',
+                priority: workorder.priority,
+                description: `工单审核被退回，请重新处理：${note}`,
+                action: 'rework_required'
+              }, [workorder.assignee_id])
+              
+              console.log(`[WorkOrder Reject Push] 已推送退回通知给维护员: ${workorder.assignee_id}`)
+            }
+          }
+        } catch (pushError) {
+          console.error('工单退回推送通知失败:', pushError)
+        }
         break
         
       case 'final_approve':
@@ -374,6 +479,35 @@ export async function POST(
         updateData.final_approved_at = now
         updateData.final_note = note
         updateData.completed_at = now
+        
+        // 发送推送通知给维护员，工单已完成
+        try {
+          if (workorder.assignee_id) {
+            const { sendWorkOrderPush } = await import('@/lib/push-notification.service')
+            
+            // 检查维护员是否有注册设备
+            const { data: devices } = await supabase
+              .from('mobile_devices')
+              .select('user_id')
+              .eq('user_id', workorder.assignee_id)
+              .eq('is_active', true)
+            
+            if (devices && devices.length > 0) {
+              await sendWorkOrderPush({
+                id: workorderId,
+                type: '工单完成',
+                location: workorder.location || '未知位置',
+                priority: workorder.priority,
+                description: `工单已通过最终审批，任务完成！`,
+                action: 'completed'
+              }, [workorder.assignee_id])
+              
+              console.log(`[WorkOrder Complete Push] 已推送完成通知给维护员: ${workorder.assignee_id}`)
+            }
+          }
+        } catch (pushError) {
+          console.error('工单完成推送通知失败:', pushError)
+        }
         break
         
       case 'final_reject':

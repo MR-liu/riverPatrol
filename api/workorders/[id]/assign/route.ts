@@ -172,6 +172,55 @@ export async function PUT(
       created_at: new Date().toISOString()
     })
     
+    // 发送推送通知给被分配的维护员
+    try {
+      const { sendWorkOrderPush } = await import('@/lib/push-notification.service')
+      
+      // 检查被分配人是否有注册设备
+      const { data: devices } = await supabase
+        .from('mobile_devices')
+        .select('user_id')
+        .eq('user_id', assignee_id)
+        .eq('is_active', true)
+      
+      if (devices && devices.length > 0) {
+        // 获取工单详细信息用于推送
+        const { data: workorderDetail } = await supabase
+          .from('workorders')
+          .select(`
+            *,
+            monitoring_points:point_id (
+              name,
+              river_name
+            ),
+            workorder_types:type_id (
+              name
+            )
+          `)
+          .eq('id', workorderId)
+          .single()
+        
+        const pushData = {
+          id: workorderId,
+          type: workorderDetail?.workorder_types?.name || '工单处理',
+          location: workorderDetail?.monitoring_points?.name || workorder.location || '未知位置',
+          priority: workorder.priority,
+          deadline: workorder.expected_complete_at,
+          assignedBy: decoded.username,
+          description: workorder.description || workorder.title
+        }
+        
+        await sendWorkOrderPush(pushData, [assignee_id])
+        
+        console.log(`[WorkOrder Assign Push] 已推送给被分配人: ${assignee_id}`)
+      } else {
+        console.log(`[WorkOrder Assign Push] 被分配人 ${assignee_id} 未注册设备，跳过推送`)
+      }
+    } catch (pushError) {
+      // 推送失败不影响工单分配
+      console.error('工单分配推送通知失败:', pushError)
+    }
+    
     return successResponse({
       workorder: updatedWorkorder,
       message: '工单分配成功'

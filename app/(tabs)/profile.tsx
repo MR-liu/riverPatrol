@@ -1,21 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import { AppStatusBar, StatusBarConfigs } from '@/components/AppStatusBar';
+import { MaterialIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
+  Alert,
   ScrollView,
   StyleSheet,
-  Alert,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppStatusBar, StatusBarConfigs } from '@/components/AppStatusBar';
 
 import { useAppContext } from '@/contexts/AppContext';
 import AttendanceService from '@/utils/AttendanceService';
-import OptimizedApiService from '@/utils/OptimizedApiService';
 
 export default function ProfileScreen() {
   const { setIsLoggedIn, currentUser, workOrders, statsRefreshTrigger, logoutUser } = useAppContext();
@@ -222,7 +221,7 @@ export default function ProfileScreen() {
         router.push('/profile-edit');
         break;
       case '版本信息':
-        Alert.alert('版本信息', '智慧河道巡查系统\n版本：1.0.0\n构建：2024.01.15\n\n© 2024 智慧河道管理团队');
+        Alert.alert('版本信息', '智慧河道巡查系统\n版本：1.0.0\n构建：2025.09.24\n\n© 2025 智慧河道管理团队');
         break;
       case '意见反馈':
         router.push('/feedback');

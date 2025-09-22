@@ -1,20 +1,21 @@
-import React, { useState } from 'react';
+import { MaterialIcons } from '@expo/vector-icons';
+import React, { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  TextInput,
   Alert,
   Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { LoadingState } from '@/components/LoadingState';
 import { PageContainer } from '@/components/PageContainer';
 import { useAppContext } from '@/contexts/AppContext';
+import BiometricAuthService from '@/utils/BiometricAuthService';
 
 export default function AccountSecurityScreen() {
   const { currentUser } = useAppContext();
@@ -28,11 +29,11 @@ export default function AccountSecurityScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   
-  // 手机号修改相关状态
+  // 手机号修改相关状态 - 暂时保留但未使用
   const [newPhone, setNewPhone] = useState('');
   const [phoneVerifyCode, setPhoneVerifyCode] = useState('');
-  const [phoneCodeSent, setPhoneCodeSent] = useState(false);
-  const [phoneCountdown, setPhoneCountdown] = useState(0);
+  // const [phoneCodeSent, setPhoneCodeSent] = useState(false);
+  // const [phoneCountdown, setPhoneCountdown] = useState(0);
   
   // 邮箱修改相关状态
   const [newEmail, setNewEmail] = useState('');
@@ -48,6 +49,41 @@ export default function AccountSecurityScreen() {
     autoLogout: true,
     biometricAuth: false,
   });
+  
+  // 初始化时检查生物认证状态
+  useEffect(() => {
+    checkBiometricStatus();
+  }, []);
+  
+  const checkBiometricStatus = async () => {
+    const isEnabled = await BiometricAuthService.isBiometricEnabled();
+    setSecuritySettings(prev => ({ ...prev, biometricAuth: isEnabled }));
+  };
+  
+  const handleBiometricToggle = async (value: boolean) => {
+    setIsLoading(true);
+    try {
+      let success = false;
+      if (value) {
+        success = await BiometricAuthService.enableBiometric();
+      } else {
+        success = await BiometricAuthService.disableBiometric();
+      }
+      
+      if (success) {
+        setSecuritySettings(prev => ({ ...prev, biometricAuth: value }));
+      } else {
+        // 如果操作失败，保持原状态
+        const currentStatus = await BiometricAuthService.isBiometricEnabled();
+        setSecuritySettings(prev => ({ ...prev, biometricAuth: currentStatus }));
+      }
+    } catch (error) {
+      console.error('切换生物认证失败:', error);
+      Alert.alert('错误', '操作失败，请重试');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleChangePassword = async () => {
     if (!oldPassword || !newPassword || !confirmPassword) {
@@ -67,49 +103,65 @@ export default function AccountSecurityScreen() {
 
     setIsLoading(true);
     try {
-      // TODO: 调用API修改密码
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const token = await AsyncStorage.getItem('authToken');
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
       
-      Alert.alert('修改成功', '密码已成功修改，请重新登录', [
-        {
-          text: '确定',
-          onPress: () => {
-            setShowPasswordModal(false);
-            setOldPassword('');
-            setNewPassword('');
-            setConfirmPassword('');
+      const response = await fetch(`${apiUrl}/api/app-profile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          oldPassword: oldPassword,
+          newPassword: newPassword,
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        Alert.alert('修改成功', '密码已成功修改', [
+          {
+            text: '确定',
+            onPress: () => {
+              setShowPasswordModal(false);
+              setOldPassword('');
+              setNewPassword('');
+              setConfirmPassword('');
+            }
           }
-        }
-      ]);
+        ]);
+      } else {
+        Alert.alert('修改失败', result.error || '密码修改失败，请重试');
+      }
     } catch (error) {
-      Alert.alert('修改失败', '密码修改失败，请重试');
+      Alert.alert('修改失败', '网络错误，请重试');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSendPhoneCode = async () => {
-    if (!newPhone || newPhone.length !== 11) {
-      Alert.alert('提示', '请输入正确的手机号码');
-      return;
-    }
-
-    setPhoneCodeSent(true);
-    setPhoneCountdown(60);
-    
-    const timer = setInterval(() => {
-      setPhoneCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setPhoneCodeSent(false);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    // TODO: 调用发送验证码API
-  };
+  // 手机号验证码发送 - 暂时禁用
+  // const handleSendPhoneCode = async () => {
+  //   if (!newPhone || newPhone.length !== 11) {
+  //     Alert.alert('提示', '请输入正确的手机号码');
+  //     return;
+  //   }
+  //   setPhoneCodeSent(true);
+  //   setPhoneCountdown(60);
+  //   const timer = setInterval(() => {
+  //     setPhoneCountdown(prev => {
+  //       if (prev <= 1) {
+  //         clearInterval(timer);
+  //         setPhoneCodeSent(false);
+  //         return 0;
+  //       }
+  //       return prev - 1;
+  //     });
+  //   }, 1000);
+  //   // TODO: 调用发送验证码API
+  // };
 
   const handleSendEmailCode = async () => {
     if (!newEmail || !newEmail.includes('@')) {
@@ -202,12 +254,12 @@ export default function AccountSecurityScreen() {
                 () => setShowPhoneModal(true)
               )}
               
-              {renderSecurityItem(
+              {/* {renderSecurityItem(
                 'email',
                 '绑定邮箱',
                 currentUser?.email || '未绑定',
                 () => setShowEmailModal(true)
-              )}
+              )} */}
             </View>
           </View>
 
@@ -218,7 +270,19 @@ export default function AccountSecurityScreen() {
               {renderSecuritySwitch('登录通知', '登录时发送通知提醒', 'loginNotification')}
               {renderSecuritySwitch('设备绑定', '限制仅可从授权设备登录', 'deviceBinding')}
               {renderSecuritySwitch('自动登出', '长时间未操作自动登出', 'autoLogout')}
-              {renderSecuritySwitch('生物认证', '启用指纹或面容识别', 'biometricAuth')}
+              <View style={styles.switchItem}>
+                <View style={styles.switchLeft}>
+                  <Text style={styles.switchTitle}>生物认证</Text>
+                  <Text style={styles.switchDescription}>启用指纹或面容识别</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.switch, securitySettings.biometricAuth && styles.switchActive]}
+                  onPress={() => handleBiometricToggle(!securitySettings.biometricAuth)}
+                  disabled={isLoading}
+                >
+                  <View style={[styles.switchThumb, securitySettings.biometricAuth && styles.switchThumbActive]} />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </ScrollView>
@@ -281,15 +345,21 @@ export default function AccountSecurityScreen() {
         () => setShowPhoneModal(false),
         '修改手机号',
         <View>
+          <View style={styles.disabledNotice}>
+            <MaterialIcons name="info-outline" size={20} color="#F59E0B" />
+            <Text style={styles.disabledNoticeText}>该功能暂未开放，敬请期待</Text>
+          </View>
+          
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>新手机号</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, styles.inputDisabled]}
               value={newPhone}
               onChangeText={setNewPhone}
               placeholder="请输入新手机号"
               keyboardType="numeric"
               maxLength={11}
+              editable={false}
             />
           </View>
           
@@ -297,26 +367,24 @@ export default function AccountSecurityScreen() {
             <Text style={styles.inputLabel}>验证码</Text>
             <View style={styles.codeInputContainer}>
               <TextInput
-                style={[styles.input, styles.codeInput]}
+                style={[styles.input, styles.codeInput, styles.inputDisabled]}
                 value={phoneVerifyCode}
                 onChangeText={setPhoneVerifyCode}
                 placeholder="请输入验证码"
                 keyboardType="numeric"
                 maxLength={6}
+                editable={false}
               />
               <TouchableOpacity
-                style={[styles.sendCodeButton, phoneCodeSent && styles.sendCodeButtonDisabled]}
-                onPress={handleSendPhoneCode}
-                disabled={phoneCodeSent}
+                style={[styles.sendCodeButton, styles.sendCodeButtonDisabled]}
+                disabled={true}
               >
-                <Text style={styles.sendCodeButtonText}>
-                  {phoneCodeSent ? `${phoneCountdown}s` : '发送验证码'}
-                </Text>
+                <Text style={styles.sendCodeButtonText}>发送验证码</Text>
               </TouchableOpacity>
             </View>
           </View>
           
-          <TouchableOpacity style={styles.submitButton}>
+          <TouchableOpacity style={[styles.submitButton, styles.submitButtonDisabled]} disabled={true}>
             <Text style={styles.submitButtonText}>确认修改</Text>
           </TouchableOpacity>
         </View>
@@ -564,5 +632,27 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+    opacity: 0.6,
+  },
+  inputDisabled: {
+    backgroundColor: '#F3F4F6',
+    color: '#9CA3AF',
+  },
+  disabledNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+    gap: 8,
+  },
+  disabledNoticeText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#92400E',
   },
 });

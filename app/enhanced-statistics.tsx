@@ -15,6 +15,7 @@ import { useAppContext } from '@/contexts/AppContext';
 import { PageContainer } from '@/components/PageContainer';
 import SimpleProblemCategoryService from '@/utils/SimpleProblemCategoryService';
 import { LoadingState } from '@/components/LoadingState';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Mock 服务方法
 const MockServices = {
@@ -244,7 +245,102 @@ export default function EnhancedStatisticsScreen() {
   const loadStatistics = async () => {
     setIsLoading(true);
     try {
-      // 使用 Mock 数据替代服务调用
+      // 从 API 获取真实统计数据
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+      const token = await AsyncStorage.getItem('authToken');
+      
+      if (!token) {
+        console.error('No token found');
+        throw new Error('未登录，请先登录');
+      }
+      
+      console.log('Loading statistics from:', `${apiUrl}/api/app-user-statistics?timeRange=${selectedTimeRange}`);
+      
+      const response = await fetch(`${apiUrl}/api/app-user-statistics?timeRange=${selectedTimeRange}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        console.error('API response not ok:', response.status);
+        throw new Error('获取统计数据失败');
+      }
+      
+      const result = await response.json();
+      console.log('API response:', result);
+      
+      if (!result.success || !result.data) {
+        throw new Error(result.error || '数据格式错误');
+      }
+      
+      const apiData = result.data;
+      
+      // 从 API 数据转换为页面所需格式
+      setStatsData({
+        overview: apiData.overview || {
+          totalReports: 0,
+          completedReports: 0,
+          pendingReports: 0,
+          completionRate: 0,
+          avgProcessTime: 0,
+          urgentReports: 0,
+          processingReports: 0,
+        },
+        attendance: apiData.attendance || {
+          totalCheckIns: 0,
+          totalWorkTime: 0,
+          punctualityRate: 0,
+          currentStatus: 'checked_out',
+          avgDailyWorkTime: 0,
+          overtimeHours: 0,
+        },
+        tracking: apiData.tracking || {
+          totalTracks: 0,
+          totalDistance: 0,
+          totalDuration: 0,
+          averageSpeed: 0,
+          maxSpeed: 0,
+          coveredAreas: 0,
+        },
+        uploads: apiData.uploads || {
+          totalFiles: 0,
+          completedFiles: 0,
+          failedFiles: 0,
+          pendingFiles: 0,
+          totalSize: 0,
+          avgUploadTime: 0,
+        },
+        messages: apiData.messages || {
+          total: 0,
+          unread: 0,
+          starred: 0,
+          todayCount: 0,
+        },
+        categories: apiData.categories || [],
+        monthlyTrend: apiData.monthlyTrend || [],
+        topLocations: apiData.topLocations || [],
+        performanceMetrics: apiData.performanceMetrics || {
+          efficiency: 0,
+          quality: 0,
+          responseTime: 0,
+          customerSatisfaction: 0,
+        },
+        charts: apiData.charts || {
+          categoryChart: [],
+          trendChart: [],
+          performanceChart: [],
+          locationChart: [],
+        },
+      });
+      
+      console.log('Statistics data set successfully');
+      // API 成功，不再执行后续代码
+      return;
+      
+      // 以下是旧的本地计算代码，暂时保留但不会执行
       const reportStats = [];  // Mock: 空数组或示例数据
       const attendanceStats = {
         totalDays: 20,
@@ -600,35 +696,47 @@ export default function EnhancedStatisticsScreen() {
                 <MaterialIcons name="pie-chart" size={16} color="#374151" />
                 <Text style={styles.cardTitle}>问题分类分布</Text>
               </View>
-              <SimpleBarChart data={statsData.charts.categoryChart} />
-              <View style={styles.categoryDetails}>
-                {statsData.categories.map((category, index) => (
-                  <View key={index} style={styles.categoryDetailItem}>
-                    <View style={styles.categoryLeft}>
-                      <View style={[styles.categoryDot, { backgroundColor: category.color }]} />
-                      <Text style={styles.categoryName}>{category.name}</Text>
-                    </View>
-                    <View style={styles.categoryRight}>
-                      <Text style={styles.categoryCount}>{category.count}</Text>
-                      <View style={styles.categoryTrend}>
-                        <MaterialIcons
-                          name={category.trend === 'up' ? 'trending-up' : 'trending-down'}
-                          size={12}
-                          color={category.trend === 'up' ? '#EF4444' : '#10B981'}
-                        />
-                        <Text
-                          style={[
-                            styles.categoryChangeText,
-                            { color: category.trend === 'up' ? '#EF4444' : '#10B981' },
-                          ]}
-                        >
-                          {category.change}%
-                        </Text>
+              {statsData.charts.categoryChart.length > 0 ? (
+                <>
+                  <SimpleBarChart data={statsData.charts.categoryChart} />
+                  <View style={styles.categoryDetails}>
+                    {statsData.categories.map((category, index) => (
+                      <View key={index} style={styles.categoryDetailItem}>
+                        <View style={styles.categoryLeft}>
+                          <View style={[styles.categoryDot, { backgroundColor: category.color }]} />
+                          <Text style={styles.categoryName}>{category.name}</Text>
+                        </View>
+                        <View style={styles.categoryRight}>
+                          <Text style={styles.categoryCount}>{category.count}</Text>
+                          {category.trend && (
+                            <View style={styles.categoryTrend}>
+                              <MaterialIcons
+                                name={category.trend === 'up' ? 'trending-up' : 'trending-down'}
+                                size={12}
+                                color={category.trend === 'up' ? '#EF4444' : '#10B981'}
+                              />
+                              <Text
+                                style={[
+                                  styles.categoryChangeText,
+                                  { color: category.trend === 'up' ? '#EF4444' : '#10B981' },
+                                ]}
+                              >
+                                {category.change}%
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                       </View>
-                    </View>
+                    ))}
                   </View>
-                ))}
-              </View>
+                </>
+              ) : (
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="info-outline" size={48} color="#9CA3AF" />
+                  <Text style={styles.emptyStateText}>暂无分类数据</Text>
+                  <Text style={styles.emptyStateSubText}>当前时间段内没有工单数据</Text>
+                </View>
+              )}
             </View>
 
             {/* 趋势分析 */}
@@ -660,12 +768,20 @@ export default function EnhancedStatisticsScreen() {
                 <MaterialIcons name="place" size={16} color="#374151" />
                 <Text style={styles.cardTitle}>区域分析</Text>
               </View>
-              <View style={styles.areaAnalysis}>
-                <SimplePieChart data={statsData.charts.locationChart} size={100} />
-                <View style={styles.locationAnalysis}>
-                  {statsData.topLocations.map(renderLocationAnalysis)}
+              {statsData.topLocations.length > 0 ? (
+                <View style={styles.areaAnalysis}>
+                  <SimplePieChart data={statsData.charts.locationChart} size={100} />
+                  <View style={styles.locationAnalysis}>
+                    {statsData.topLocations.map(renderLocationAnalysis)}
+                  </View>
                 </View>
-              </View>
+              ) : (
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="location-off" size={48} color="#9CA3AF" />
+                  <Text style={styles.emptyStateText}>暂无区域数据</Text>
+                  <Text style={styles.emptyStateSubText}>当前时间段内没有区域统计</Text>
+                </View>
+              )}
             </View>
 
             {/* 考勤与效率 */}
@@ -736,6 +852,22 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 16,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6B7280',
+    marginTop: 16,
+  },
+  emptyStateSubText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 8,
   },
   timeRangeSelector: {
     flexDirection: 'row',

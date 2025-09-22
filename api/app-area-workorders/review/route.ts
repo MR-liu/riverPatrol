@@ -217,6 +217,92 @@ export async function POST(request: NextRequest) {
         })
     }
 
+    // 7. 发送推送通知
+    try {
+      const { sendWorkOrderPush } = await import('@/lib/push-notification.service')
+      
+      if (action === 'approve') {
+        // 审核通过，根据工单类型发送不同通知
+        if (workorder.workorder_source === 'manual') {
+          // 人工工单：通知发起人进行现场确认
+          if (workorder.initial_reporter_id) {
+            const { data: devices } = await supabase
+              .from('mobile_devices')
+              .select('user_id')
+              .eq('user_id', workorder.initial_reporter_id)
+              .eq('is_active', true)
+            
+            if (devices && devices.length > 0) {
+              await sendWorkOrderPush({
+                id: workorder_id,
+                type: '现场确认',
+                location: workorder.location || '未知位置',
+                priority: workorder.priority,
+                description: `工单已处理完成，请进行现场确认：${workorder.title}`,
+                action: 'confirmation_required'
+              }, [workorder.initial_reporter_id])
+              
+              console.log(`[WorkOrder Confirm Push] 已推送现场确认通知给发起人: ${workorder.initial_reporter_id}`)
+            }
+          }
+        } else if (workorder.workorder_source === 'ai') {
+          // AI工单：通知监控中心主管进行最终审批
+          const { data: monitorManagers } = await supabase
+            .from('users')
+            .select('id')
+            .eq('role_id', 'R002')
+            .eq('status', 'active')
+          
+          if (monitorManagers && monitorManagers.length > 0) {
+            const { data: devices } = await supabase
+              .from('mobile_devices')
+              .select('user_id')
+              .in('user_id', monitorManagers.map(u => u.id))
+              .eq('is_active', true)
+            
+            const usersWithDevices = [...new Set(devices?.map(d => d.user_id) || [])]
+            
+            if (usersWithDevices.length > 0) {
+              await sendWorkOrderPush({
+                id: workorder_id,
+                type: '最终审批',
+                location: workorder.location || '未知位置',
+                priority: workorder.priority,
+                description: `AI工单已通过区域审核，请进行最终审批：${workorder.title}`,
+                action: 'final_approval_required'
+              }, usersWithDevices)
+              
+              console.log(`[WorkOrder Final Push] 已推送最终审批通知给 ${usersWithDevices.length} 个监控中心主管`)
+            }
+          }
+        }
+      } else if (action === 'reject') {
+        // 审核拒绝：通知维护员重新处理
+        if (workorder.assignee_id) {
+          const { data: devices } = await supabase
+            .from('mobile_devices')
+            .select('user_id')
+            .eq('user_id', workorder.assignee_id)
+            .eq('is_active', true)
+          
+          if (devices && devices.length > 0) {
+            await sendWorkOrderPush({
+              id: workorder_id,
+              type: '审核退回',
+              location: workorder.location || '未知位置',
+              priority: workorder.priority,
+              description: `工单审核被退回，请重新处理：${review_note}`,
+              action: 'rework_required'
+            }, [workorder.assignee_id])
+            
+            console.log(`[WorkOrder Reject Push] 已推送退回通知给维护员: ${workorder.assignee_id}`)
+          }
+        }
+      }
+    } catch (pushError) {
+      console.error('工单审核推送通知失败:', pushError)
+    }
+
     // 记录API活动日志
     await logApiActivity('POST', 'app-area-workorders/review', userId, {
       workorder_id,

@@ -73,7 +73,18 @@ export default function AttendanceScreen() {
     try {
       let location = null;
       try {
-        location = await LocationService.getCurrentLocation();
+        const position = await LocationService.getCurrentPosition();
+        if (position) {
+          const address = await LocationService.getAddressFromCoords(
+            position.coords.latitude,
+            position.coords.longitude
+          );
+          location = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            address: address,
+          };
+        }
       } catch (error) {
         console.log('Failed to get location:', error);
       }

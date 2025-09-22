@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Linking,
-  Alert,
-} from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import React, { useState } from 'react';
+import {
+  Alert,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 import { PageContainer } from '@/components/PageContainer';
 
@@ -174,7 +174,7 @@ export default function HelpCenterScreen() {
   const showVersionInfo = () => {
     Alert.alert(
       '版本信息',
-      '智慧河道巡查系统\n版本：1.0.0\n构建：2024.01.15\n\n更新内容：\n• 新增考勤管理功能\n• 优化界面交互体验\n• 修复已知问题',
+      '智慧河道巡查系统\n版本：1.0.0\n构建：2025.09.24\n\n更新内容：\n• 新增考勤管理功能\n• 优化界面交互体验\n• 修复已知问题',
       [{ text: '确定' }]
     );
   };

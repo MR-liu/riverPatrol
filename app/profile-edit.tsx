@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,47 +16,89 @@ import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
 import { LoadingState } from '@/components/LoadingState';
+import { PageContainer } from '@/components/PageContainer';
 import { useAppContext } from '@/contexts/AppContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface UserProfile {
   id: string;
+  username: string;
   name: string;
-  employeeId: string;
-  position: string;
-  department: string;
   phone: string;
   email: string;
   avatar: string;
+  roleId: string;
+  roleName: string;
+  roleCode: string;
+  departmentId: string;
+  departmentName: string;
+  status: string;
+  lastLoginAt: string;
+  createdAt: string;
+  updatedAt: string;
+  employeeId: string;
+  position: string;
   workLocation: string;
   joinDate: string;
-  emergencyContact: string;
-  emergencyPhone: string;
-  address: string;
-  idCard: string;
 }
 
 export default function ProfileEditScreen() {
   const { currentUser } = useAppContext();
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<UserProfile>({
-    id: currentUser?.id || '',
-    name: currentUser?.name || '',
-    employeeId: currentUser?.username || '',
-    position: currentUser?.role || '河道巡查员',
-    department: '环保巡查部',
-    phone: currentUser?.phone || '',
-    email: currentUser?.email || '',
+    id: '',
+    username: '',
+    name: '',
+    phone: '',
+    email: '',
     avatar: '',
+    roleId: '',
+    roleName: '',
+    roleCode: '',
+    departmentId: '',
+    departmentName: '',
+    status: 'active',
+    lastLoginAt: '',
+    createdAt: '',
+    updatedAt: '',
+    employeeId: '',
+    position: '',
     workLocation: '',
     joinDate: '',
-    emergencyContact: '',
-    emergencyPhone: '',
-    address: '',
-    idCard: '',
   });
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedProfile, setEditedProfile] = useState<UserProfile>(profile);
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  const loadProfile = async () => {
+    setIsLoading(true);
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+      
+      const response = await fetch(`${apiUrl}/api/app-profile`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          setProfile(result.data);
+          setEditedProfile(result.data);
+        }
+      }
+    } catch (error) {
+      console.error('Load profile error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleEditToggle = () => {
     if (isEditing) {
@@ -80,34 +122,59 @@ export default function ProfileEditScreen() {
       return;
     }
 
-    if (!editedProfile.phone.trim()) {
-      Alert.alert('提示', '手机号不能为空');
-      return;
+    if (editedProfile.phone && editedProfile.phone.trim()) {
+      // 验证手机号格式
+      const phoneRegex = /^1[3-9]\d{9}$/;
+      if (!phoneRegex.test(editedProfile.phone.trim())) {
+        Alert.alert('提示', '请输入正确的手机号');
+        return;
+      }
     }
 
-    if (!editedProfile.email.trim()) {
-      Alert.alert('提示', '邮箱不能为空');
-      return;
-    }
-
-    // 验证邮箱格式
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(editedProfile.email)) {
-      Alert.alert('提示', '请输入正确的邮箱格式');
-      return;
+    if (editedProfile.email && editedProfile.email.trim()) {
+      // 验证邮箱格式
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(editedProfile.email)) {
+        Alert.alert('提示', '请输入正确的邮箱格式');
+        return;
+      }
     }
 
     setIsLoading(true);
     try {
-      // 模拟API调用
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const token = await AsyncStorage.getItem('authToken');
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
       
-      setProfile(editedProfile);
-      setIsEditing(false);
-      
-      Alert.alert('保存成功', '个人资料已更新');
+      const response = await fetch(`${apiUrl}/api/app-profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: editedProfile.name,
+          phone: editedProfile.phone,
+          email: editedProfile.email,
+          avatar: editedProfile.avatar,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          setProfile(result.data);
+          setEditedProfile(result.data);
+          setIsEditing(false);
+          Alert.alert('保存成功', '个人资料已更新');
+        } else {
+          Alert.alert('保存失败', result.error || '个人资料保存失败，请重试');
+        }
+      } else {
+        Alert.alert('保存失败', '个人资料保存失败，请重试');
+      }
     } catch (error) {
-      Alert.alert('保存失败', '个人资料保存失败，请重试');
+      console.error('Save profile error:', error);
+      Alert.alert('保存失败', '网络错误，请重试');
     } finally {
       setIsLoading(false);
     }
@@ -162,10 +229,35 @@ export default function ProfileEditScreen() {
         } else {
           // 如果不在编辑模式，直接更新头像
           setIsLoading(true);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          setProfile(prev => ({ ...prev, avatar: newAvatar }));
-          setIsLoading(false);
-          Alert.alert('更新成功', '头像已更新');
+          try {
+            const token = await AsyncStorage.getItem('authToken');
+            const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+            
+            const response = await fetch(`${apiUrl}/api/app-profile`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                avatar: newAvatar,
+              }),
+            });
+
+            if (response.ok) {
+              const result = await response.json();
+              if (result.success && result.data) {
+                setProfile(result.data);
+                setEditedProfile(result.data);
+                Alert.alert('更新成功', '头像已更新');
+              }
+            }
+          } catch (error) {
+            console.error('Update avatar error:', error);
+            Alert.alert('更新失败', '头像更新失败，请重试');
+          } finally {
+            setIsLoading(false);
+          }
         }
       }
     } catch (error) {
@@ -258,7 +350,7 @@ export default function ProfileEditScreen() {
                 {renderField('姓名', 'name', '请输入姓名')}
                 {renderField('工号', 'employeeId', '工号', false)}
                 {renderField('职位', 'position', '职位', false)}
-                {renderField('部门', 'department', '部门', false)}
+                {renderField('部门', 'departmentName', '部门', false)}
                 {renderField('入职日期', 'joinDate', '入职日期', false)}
               </>
             ))}
@@ -268,23 +360,16 @@ export default function ProfileEditScreen() {
               <>
                 {renderField('手机号', 'phone', '请输入手机号', true, 'phone-pad')}
                 {renderField('邮箱', 'email', '请输入邮箱', true, 'email-address')}
-                {renderField('工作地点', 'workLocation', '请输入工作地点')}
-                {renderField('家庭住址', 'address', '请输入家庭住址', true, 'default', true)}
+                {renderField('工作地点', 'workLocation', '工作地点', false)}
               </>
             ))}
 
-            {/* 紧急联系人 */}
-            {renderSection('紧急联系人', (
+            {/* 账号信息 */}
+            {renderSection('账号信息', (
               <>
-                {renderField('联系人姓名', 'emergencyContact', '请输入紧急联系人姓名')}
-                {renderField('联系人电话', 'emergencyPhone', '请输入紧急联系人电话', true, 'phone-pad')}
-              </>
-            ))}
-
-            {/* 身份信息 */}
-            {renderSection('身份信息', (
-              <>
-                {renderField('身份证号', 'idCard', '身份证号', false)}
+                {renderField('用户名', 'username', '用户名', false)}
+                {renderField('角色', 'roleName', '角色', false)}
+                {renderField('状态', 'status', '状态', false)}
               </>
             ))}
 

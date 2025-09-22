@@ -9,7 +9,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -22,6 +22,7 @@ export const unstable_settings = {
 };
 
 export default function MessagesScreen() {
+  const insets = useSafeAreaInsets();
   const [selectedTab, setSelectedTab] = useState('all');
   const [messages, setMessages] = useState<Message[]>([]);
   const [unreadMessages, setUnreadMessages] = useState<Message[]>([]);
@@ -288,17 +289,19 @@ export default function MessagesScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* 自定义头部 */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.back()}
-        >
-          <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>消息中心</Text>
-        <View style={styles.headerButton} />
+    <View style={styles.container}>
+      {/* Header background that extends to top */}
+      <View style={[styles.headerBackground, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.back()}
+          >
+            <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>消息中心</Text>
+          <View style={styles.headerButton} />
+        </View>
       </View>
 
       <LinearGradient
@@ -365,17 +368,19 @@ export default function MessagesScreen() {
           </TouchableOpacity>
         </View>
       </LinearGradient>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  headerBackground: {
     backgroundColor: '#3B82F6',
   },
   header: {
-    backgroundColor: '#3B82F6',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

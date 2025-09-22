@@ -222,12 +222,97 @@ export async function POST(
       module: 'alarm_management',
       action: 'convert_to_workorder',
       target_type: 'alarm',
-      target_id: params.id,
+      target_id: alarmId,
       target_name: alarm.title,
       request_data: { workorder_id: workorderId },
       status: 'success',
       created_at: new Date().toISOString()
     })
+    
+    // 发送推送通知给相关负责人
+    try {
+      const { sendWorkOrderPush } = await import('@/lib/push-notification.service')
+      
+      // 确定推送目标
+      let targetUserIds: string[] = []
+      
+      // 1. 如果有指定处理人，推送给处理人
+      if (newWorkorder.assignee_id) {
+        targetUserIds.push(newWorkorder.assignee_id)
+      }
+      
+      // 2. 如果有区域ID，推送给区域负责人
+      if (workorderAreaId) {
+        const { data: area } = await supabase
+          .from('river_management_areas')
+          .select('supervisor_id, maintenance_worker_ids')
+          .eq('id', workorderAreaId)
+          .single()
+        
+        if (area) {
+          // 推送给区域主管
+          if (area.supervisor_id) {
+            targetUserIds.push(area.supervisor_id)
+          }
+          // 推送给区域维护员
+          if (area.maintenance_worker_ids && Array.isArray(area.maintenance_worker_ids)) {
+            targetUserIds = [...targetUserIds, ...area.maintenance_worker_ids]
+          }
+        }
+      }
+      
+      // 3. 如果没有指定区域，根据监测点找区域负责人
+      if (!workorderAreaId && alarm.point_id) {
+        const { data: areas } = await supabase
+          .from('river_management_areas')
+          .select('id, supervisor_id, maintenance_worker_ids, monitoring_point_ids')
+        
+        // 找到包含该监测点的区域
+        const relevantArea = areas?.find(area => 
+          area.monitoring_point_ids?.includes(alarm.point_id)
+        )
+        
+        if (relevantArea) {
+          if (relevantArea.supervisor_id) {
+            targetUserIds.push(relevantArea.supervisor_id)
+          }
+          if (relevantArea.maintenance_worker_ids && Array.isArray(relevantArea.maintenance_worker_ids)) {
+            targetUserIds = [...targetUserIds, ...relevantArea.maintenance_worker_ids]
+          }
+        }
+      }
+      
+      // 去重
+      targetUserIds = [...new Set(targetUserIds)]
+      
+      // 只推送给有注册设备的用户
+      if (targetUserIds.length > 0) {
+        // 检查哪些用户有注册设备
+        const { data: devices } = await supabase
+          .from('mobile_devices')
+          .select('user_id')
+          .in('user_id', targetUserIds)
+          .eq('is_active', true)
+        
+        const usersWithDevices = [...new Set(devices?.map(d => d.user_id) || [])]
+        
+        if (usersWithDevices.length > 0) {
+          // 发送工单推送通知
+          await sendWorkOrderPush({
+            id: workorderId,
+            type: '告警处理',
+            location: alarm.monitoring_points?.name || '未知位置',
+            priority: workorderPriority,
+            deadline: expected_complete_at
+          }, usersWithDevices)
+          
+          console.log(`[WorkOrder Push] 已推送给 ${usersWithDevices.length} 个用户:`, usersWithDevices)
+        }
+      }
+    } catch (pushError) {
+      // 推送失败不影响工单创建
+      console.error('推送通知失败:', pushError)
+    }
     
     return successResponse({
       workorder: newWorkorder,

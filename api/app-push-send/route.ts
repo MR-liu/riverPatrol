@@ -134,74 +134,134 @@ export async function POST(request: NextRequest) {
         }
       )
     } else if (data.title && data.content) {
-      // 直接发送自定义内容
-      const { createServiceClient } = await import('@/lib/supabase')
-      const supabase = createServiceClient()
-      
-      // 保存到数据库
-      if (data.save_to_database) {
-        const timestamp = Date.now().toString().slice(-10)
-        const notifications = targetUserIds.map((userId, index) => ({
-          id: `N${timestamp}${index.toString().padStart(3, '0')}`,
-          user_id: userId,
+      // 使用统一的推送服务，直接调用 sendTemplateNotification
+      // 但是使用自定义内容而不是模板
+      result = await pushNotificationService.sendTemplateNotification(
+        'CUSTOM', // 使用特殊的 CUSTOM 标识表示自定义内容
+        {
           title: data.title,
-          content: data.content,
-          type: 'system',
+          content: data.content
+        },
+        targetUserIds,
+        {
+          platform: data.platform,
           priority: data.priority,
-          metadata: data.extras,
-          created_at: new Date().toISOString()
-        }))
-        
-        await supabase
-          .from('notifications')
-          .insert(notifications)
-        
-        // 创建用户关联（使用新的user_notifications表）
-        const readTimestamp = Date.now().toString().slice(-10)
-        const userNotifications = notifications.map((n, index) => ({
-          id: `UN${readTimestamp}${index.toString().padStart(3, '0')}`,
-          notification_id: n.id,
-          user_id: n.user_id,
-          is_read: false,
-          read_at: null,
-          created_at: new Date().toISOString()
-        }))
-        
-        await supabase
-          .from('user_notifications')
-          .insert(userNotifications)
-      }
+          extras: {
+            ...data.extras,
+            custom_push: true,
+            sender_id: decoded.userId
+          },
+          saveToDatabase: data.save_to_database,
+          sendAppPush: data.send_app_push
+        }
+      )
       
-      // 发送APP推送
-      if (data.send_app_push) {
-        const { default: jpushService } = await import('@/lib/jpush/service')
+      // 如果 CUSTOM 模板不存在，则直接处理
+      if (!result.success && result.message.includes('模板')) {
+        // 直接构建推送消息
+        const { createServiceClient } = await import('@/lib/supabase')
+        const supabase = createServiceClient()
         
-        // 获取设备信息
-        const { data: devices } = await supabase
-          .from('mobile_devices')
-          .select('*')
-          .in('user_id', targetUserIds)
-          .eq('is_active', true)
-        
-        if (devices && devices.length > 0) {
-          const jpushIds = devices
-            .map(d => d.jpush_registration_id || d.device_token)
-            .filter(Boolean)
+        // 保存到数据库（使用正确的表结构）
+        if (data.save_to_database) {
+          const timestamp = Date.now().toString().slice(-10)
           
-          if (jpushIds.length > 0) {
-            await jpushService.sendToDevices(jpushIds, {
-              title: data.title!,
-              content: data.content!,
-              extras: data.extras
-            })
+          // 创建一条主通知记录
+          const notification = {
+            id: `N${timestamp}`,
+            title: data.title,
+            content: data.content,
+            type: 'system',
+            priority: data.priority,
+            send_type: targetUserIds.length > 1 ? 'user' : 'user',
+            target_users: targetUserIds,
+            metadata: {
+              ...data.extras,
+              sender_id: decoded.userId
+            },
+            created_by: decoded.userId,
+            created_at: new Date().toISOString()
+          }
+          
+          const { data: savedNotification, error: saveError } = await supabase
+            .from('notifications')
+            .insert(notification)
+            .select()
+            .single()
+          
+          if (!saveError && savedNotification) {
+            // 创建用户关联
+            const userNotifications = targetUserIds.map((userId, index) => ({
+              id: `UN${timestamp}${index.toString().padStart(3, '0')}`,
+              notification_id: savedNotification.id,
+              user_id: userId,
+              is_read: false,
+              read_at: null,
+              created_at: new Date().toISOString()
+            }))
+            
+            await supabase
+              .from('user_notifications')
+              .insert(userNotifications)
           }
         }
-      }
-      
-      result = {
-        success: true,
-        message: `推送发送成功，目标用户 ${targetUserIds.length} 人`,
-        targetUsers: targetUserIds.length
+        
+        // 发送APP推送
+        if (data.send_app_push) {
+          const { default: jpushService } = await import('@/lib/jpush/service')
+          
+          // 获取设备信息
+          const { data: devices } = await supabase
+            .from('mobile_devices')
+            .select('*')
+            .in('user_id', targetUserIds)
+            .eq('is_active', true)
+          
+          if (devices && devices.length > 0) {
+            const jpushIds = devices
+              .map(d => d.jpush_registration_id || d.device_token)
+              .filter(Boolean)
+            
+            if (jpushIds.length > 0) {
+              console.log(`[Push] Sending to ${jpushIds.length} devices via JPush`)
+              const pushResult = await jpushService.sendToDevices(jpushIds, {
+                title: data.title!,
+                content: data.content!,
+                extras: data.extras,
+                priority: data.priority === 'urgent' ? 2 : data.priority === 'high' ? 1 : 0
+              })
+              
+              result = {
+                success: pushResult.success,
+                message: pushResult.success 
+                  ? `推送发送成功，目标用户 ${targetUserIds.length} 人`
+                  : pushResult.error || '推送失败',
+                targetUsers: targetUserIds.length,
+                pushResult
+              }
+            } else {
+              console.log('[Push] No valid registration IDs found')
+              result = {
+                success: true,
+                message: `通知已保存但无有效设备，目标用户 ${targetUserIds.length} 人`,
+                targetUsers: targetUserIds.length
+              }
+            }
+          } else {
+            console.log('[Push] No active devices found for target users')
+            result = {
+              success: true,
+              message: `通知已保存但用户无活跃设备，目标用户 ${targetUserIds.length} 人`,
+              targetUsers: targetUserIds.length
+            }
+          }
+        } else {
+          result = {
+            success: true,
+            message: `通知已保存，目标用户 ${targetUserIds.length} 人`,
+            targetUsers: targetUserIds.length
+          }
+        }
       }
     } else {
       return errorResponse('请提供推送内容或模板', 400)

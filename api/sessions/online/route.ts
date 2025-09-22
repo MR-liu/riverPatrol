@@ -32,7 +32,70 @@ export async function GET(request: NextRequest) {
       return errorResponse('无效的访问令牌', 401)
     }
     
-    // 只有管理员角色可以查看在线会话
+    const { searchParams } = new URL(request.url)
+    const requestType = searchParams.get('type')
+    
+    // 如果是请求工作时长，所有登录用户都可以访问
+    if (requestType === 'worktime') {
+      const supabase = createServiceClient()
+      
+      // 获取今日的开始时间
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const todayStr = today.toISOString()
+      
+      // 获取用户今日的所有会话
+      const { data: sessions, error } = await supabase
+        .from('user_sessions')
+        .select('created_at, last_activity')
+        .eq('user_id', decoded.userId)
+        .gte('created_at', todayStr)
+        .order('created_at', { ascending: true })
+      
+      if (error) {
+        console.error('获取会话失败:', error)
+        return successResponse({ todayWorkTime: 0 })
+      }
+      
+      // 计算总工作时长（分钟）
+      let totalMinutes = 0
+      if (sessions && sessions.length > 0) {
+        sessions.forEach(session => {
+          const start = new Date(session.created_at).getTime()
+          const end = session.last_activity ? new Date(session.last_activity).getTime() : Date.now()
+          const minutes = Math.floor((end - start) / 1000 / 60)
+          totalMinutes += minutes
+        })
+      }
+      
+      // 如果没有会话记录，创建一个新的
+      if (!sessions || sessions.length === 0) {
+        await supabase
+          .from('user_sessions')
+          .insert({
+            user_id: decoded.userId,
+            ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '0.0.0.0',
+            user_agent: request.headers.get('user-agent') || 'Unknown',
+            created_at: new Date().toISOString(),
+            last_activity: new Date().toISOString()
+          })
+      } else {
+        // 更新最后一个会话的活动时间
+        const lastSession = sessions[sessions.length - 1]
+        await supabase
+          .from('user_sessions')
+          .update({ last_activity: new Date().toISOString() })
+          .eq('user_id', decoded.userId)
+          .eq('created_at', lastSession.created_at)
+      }
+      
+      return successResponse({ 
+        success: true,
+        todayWorkTime: totalMinutes 
+      })
+    }
+    
+    // 只有管理员角色可以查看所有在线会话
     // 支持多种角色代码格式
     const allowedRoles = ['ADMIN', 'admin', 'R001', 'MONITOR_MANAGER', 'R002']
     if (!allowedRoles.includes(decoded.roleCode) && !allowedRoles.includes(decoded.roleId)) {

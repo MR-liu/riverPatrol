@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,75 +12,65 @@ import { router } from 'expo-router';
 
 import { LoadingState } from '@/components/LoadingState';
 import { PageContainer } from '@/components/PageContainer';
-
-interface PrivacySetting {
-  key: string;
-  title: string;
-  description: string;
-  enabled: boolean;
-  level: 'high' | 'medium' | 'low';
-}
+import PrivacyService, { 
+  PrivacySetting,
+  DataSettings,
+  UsageSettings 
+} from '@/utils/PrivacyService';
 
 export default function PrivacySettingsScreen() {
   const [isLoading, setIsLoading] = useState(false);
-  const [privacySettings, setPrivacySettings] = useState<PrivacySetting[]>([
-    {
-      key: 'location',
-      title: '位置信息',
-      description: '允许应用访问您的位置信息用于工单定位',
-      enabled: true,
-      level: 'high',
-    },
-    {
-      key: 'camera',
-      title: '相机权限',
-      description: '允许应用使用相机拍摄工单照片',
-      enabled: true,
-      level: 'high',
-    },
-    {
-      key: 'storage',
-      title: '存储权限',
-      description: '允许应用读取和保存文件到设备存储',
-      enabled: true,
-      level: 'medium',
-    },
-    {
-      key: 'contacts',
-      title: '通讯录访问',
-      description: '允许应用访问通讯录用于紧急联系',
-      enabled: false,
-      level: 'low',
-    },
-    {
-      key: 'microphone',
-      title: '麦克风权限',
-      description: '允许应用使用麦克风录制语音备注',
-      enabled: false,
-      level: 'low',
-    },
-  ]);
-
-  const [dataSettings, setDataSettings] = useState({
+  const [privacySettings, setPrivacySettings] = useState<PrivacySetting[]>([]);
+  const [dataSettings, setDataSettings] = useState<DataSettings>({
     dataCollection: true,
     analytics: true,
     crashReporting: true,
     personalizedAds: false,
     thirdPartySharing: false,
   });
-
-  const [usageSettings, setUsageSettings] = useState({
+  const [usageSettings, setUsageSettings] = useState<UsageSettings>({
     usageStats: true,
     performanceData: true,
     featureUsage: false,
     errorReporting: true,
   });
+  const [storageInfo, setStorageInfo] = useState({ used: '0 KB', files: 0 });
+
+  // 初始化加载设置
+  useEffect(() => {
+    loadAllSettings();
+  }, []);
+
+  const loadAllSettings = async () => {
+    setIsLoading(true);
+    try {
+      // 加载隐私设置
+      const privacy = await PrivacyService.loadPrivacySettings();
+      setPrivacySettings(privacy);
+
+      // 加载数据设置
+      const data = await PrivacyService.loadDataSettings();
+      setDataSettings(data);
+
+      // 加载使用设置
+      const usage = await PrivacyService.loadUsageSettings();
+      setUsageSettings(usage);
+
+      // 获取存储信息
+      const storage = await PrivacyService.getStorageInfo();
+      setStorageInfo(storage);
+    } catch (error) {
+      console.error('加载设置失败:', error);
+      Alert.alert('加载失败', '无法加载隐私设置，请重试');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const togglePrivacySetting = async (key: string) => {
-    const settingIndex = privacySettings.findIndex(s => s.key === key);
-    if (settingIndex === -1) return;
+    const setting = privacySettings.find(s => s.key === key);
+    if (!setting) return;
 
-    const setting = privacySettings[settingIndex];
     const newValue = !setting.enabled;
 
     // 对于重要权限，显示确认对话框
@@ -93,29 +83,27 @@ export default function PrivacySettingsScreen() {
           {
             text: '确定关闭',
             style: 'destructive',
-            onPress: () => updatePrivacySetting(settingIndex, newValue)
+            onPress: () => updatePrivacySetting(key)
           }
         ]
       );
       return;
     }
 
-    updatePrivacySetting(settingIndex, newValue);
+    await updatePrivacySetting(key);
   };
 
-  const updatePrivacySetting = async (index: number, newValue: boolean) => {
+  const updatePrivacySetting = async (key: string) => {
     setIsLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // 使用真实的权限服务
+      const updatedSettings = await PrivacyService.togglePrivacySetting(key, privacySettings);
+      setPrivacySettings(updatedSettings);
       
-      setPrivacySettings(prev => {
-        const newSettings = [...prev];
-        newSettings[index] = { ...newSettings[index], enabled: newValue };
-        return newSettings;
-      });
-
-      const settingName = privacySettings[index].title;
-      Alert.alert('设置成功', `${settingName}权限已${newValue ? '开启' : '关闭'}`);
+      const setting = updatedSettings.find(s => s.key === key);
+      if (setting) {
+        Alert.alert('设置成功', `${setting.title}权限已${setting.enabled ? '开启' : '关闭'}`);
+      }
     } catch (error) {
       Alert.alert('设置失败', '权限设置失败，请重试');
     } finally {
@@ -123,63 +111,69 @@ export default function PrivacySettingsScreen() {
     }
   };
 
-  const toggleDataSetting = async (key: keyof typeof dataSettings) => {
+  const toggleDataSetting = async (key: keyof DataSettings) => {
     const newValue = !dataSettings[key];
     
     setIsLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setDataSettings(prev => ({
-        ...prev,
+      const newSettings = {
+        ...dataSettings,
         [key]: newValue
-      }));
-
-      const settingNames = {
-        dataCollection: '数据收集',
-        analytics: '分析统计',
-        crashReporting: '崩溃报告',
-        personalizedAds: '个性化广告',
-        thirdPartySharing: '第三方共享'
       };
       
-      Alert.alert('设置成功', `${settingNames[key]}已${newValue ? '开启' : '关闭'}`);
+      // 保存到存储
+      const success = await PrivacyService.saveDataSettings(newSettings);
+      
+      if (success) {
+        setDataSettings(newSettings);
+        
+        const settingNames = {
+          dataCollection: '数据收集',
+          analytics: '分析统计',
+          crashReporting: '崩溃报告',
+          personalizedAds: '个性化广告',
+          thirdPartySharing: '第三方共享'
+        };
+        
+        Alert.alert('设置成功', `${settingNames[key]}已${newValue ? '开启' : '关闭'}`);
+      } else {
+        Alert.alert('设置失败', '设置保存失败，请重试');
+      }
     } catch (error) {
-      setDataSettings(prev => ({
-        ...prev,
-        [key]: !newValue
-      }));
       Alert.alert('设置失败', '设置保存失败，请重试');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const toggleUsageSetting = async (key: keyof typeof usageSettings) => {
+  const toggleUsageSetting = async (key: keyof UsageSettings) => {
     const newValue = !usageSettings[key];
     
     setIsLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setUsageSettings(prev => ({
-        ...prev,
+      const newSettings = {
+        ...usageSettings,
         [key]: newValue
-      }));
-
-      const settingNames = {
-        usageStats: '使用统计',
-        performanceData: '性能数据',
-        featureUsage: '功能使用',
-        errorReporting: '错误报告'
       };
       
-      Alert.alert('设置成功', `${settingNames[key]}已${newValue ? '开启' : '关闭'}`);
+      // 保存到存储
+      const success = await PrivacyService.saveUsageSettings(newSettings);
+      
+      if (success) {
+        setUsageSettings(newSettings);
+        
+        const settingNames = {
+          usageStats: '使用统计',
+          performanceData: '性能数据',
+          featureUsage: '功能使用',
+          errorReporting: '错误报告'
+        };
+        
+        Alert.alert('设置成功', `${settingNames[key]}已${newValue ? '开启' : '关闭'}`);
+      } else {
+        Alert.alert('设置失败', '设置保存失败，请重试');
+      }
     } catch (error) {
-      setUsageSettings(prev => ({
-        ...prev,
-        [key]: !newValue
-      }));
       Alert.alert('设置失败', '设置保存失败，请重试');
     } finally {
       setIsLoading(false);
@@ -198,8 +192,14 @@ export default function PrivacySettingsScreen() {
           onPress: async () => {
             setIsLoading(true);
             try {
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              Alert.alert('清除成功', '所有本地数据已清除');
+              const success = await PrivacyService.clearAllData();
+              if (success) {
+                Alert.alert('清除成功', '所有本地数据已清除');
+                // 重新加载设置
+                await loadAllSettings();
+              } else {
+                Alert.alert('清除失败', '数据清除失败，请重试');
+              }
             } catch (error) {
               Alert.alert('清除失败', '数据清除失败，请重试');
             } finally {
@@ -214,7 +214,7 @@ export default function PrivacySettingsScreen() {
   const exportPersonalData = () => {
     Alert.alert(
       '导出个人数据',
-      '我们将为您打包所有个人数据，包括工单记录、考勤信息等。导出文件将发送到您的邮箱。',
+      '我们将为您打包所有个人数据，导出文件将可以分享或保存。',
       [
         { text: '取消', style: 'cancel' },
         {
@@ -222,8 +222,10 @@ export default function PrivacySettingsScreen() {
           onPress: async () => {
             setIsLoading(true);
             try {
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              Alert.alert('导出成功', '个人数据导出文件已发送到您的邮箱');
+              const success = await PrivacyService.exportPersonalData();
+              if (!success) {
+                Alert.alert('导出失败', '数据导出失败，请重试');
+              }
             } catch (error) {
               Alert.alert('导出失败', '数据导出失败，请重试');
             } finally {
@@ -278,7 +280,7 @@ export default function PrivacySettingsScreen() {
   );
 
   const renderDataSettingItem = (
-    key: keyof typeof dataSettings,
+    key: keyof DataSettings,
     title: string,
     description: string
   ) => (
@@ -299,7 +301,7 @@ export default function PrivacySettingsScreen() {
   );
 
   const renderUsageSettingItem = (
-    key: keyof typeof usageSettings,
+    key: keyof UsageSettings,
     title: string,
     description: string
   ) => (
@@ -436,8 +438,11 @@ export default function PrivacySettingsScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* 最后更新时间 */}
+            {/* 存储信息和最后更新时间 */}
             <View style={styles.footer}>
+              <Text style={styles.footerText}>
+                已使用存储: {storageInfo.used} ({storageInfo.files} 个文件)
+              </Text>
               <Text style={styles.footerText}>
                 隐私设置最后更新: {new Date().toLocaleDateString('zh-CN')}
               </Text>

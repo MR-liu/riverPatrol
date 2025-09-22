@@ -53,6 +53,10 @@
     </dict>
     <key>NSCameraUsageDescription</key>
     <string>此应用需要相机权限来拍摄现场照片。</string>
+    <key>NSContactsUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your contacts</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to use Face ID</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
     <string>此应用需要位置权限来记录巡查轨迹和获取当前位置。</string>
     <key>NSLocationAlwaysUsageDescription</key>
@@ -61,6 +65,8 @@
     <string>Allow $(PRODUCT_NAME) to access your location</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to save photos</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>此应用需要访问相册来选择和上传照片。</string>
     <key>NSUserActivityTypes</key>
